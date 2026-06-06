@@ -179,6 +179,11 @@ class MapWallpaperGenerator(
             buckets.getOrPut(roadClass) { mutableListOf() }.add(path)
         }
 
+        // Treat a road-less response as a failure rather than caching a blank map.
+        if (buckets.values.sumOf { it.size } == 0) {
+            throw IOException("Overpass returned no roads")
+        }
+
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND

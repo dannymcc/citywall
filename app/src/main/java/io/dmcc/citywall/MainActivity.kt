@@ -153,6 +153,8 @@ private fun CityWallScreen() {
     var showLicences by remember { mutableStateOf(false) }
     var leaderboard by remember { mutableStateOf<List<PathfinderApi.Leader>>(emptyList()) }
     var leaderboardLoading by remember { mutableStateOf(false) }
+    var updateMsg by remember { mutableStateOf<String?>(null) }
+    var updating by remember { mutableStateOf(false) }
 
     var permRefresh by remember { mutableStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -285,6 +287,36 @@ private fun CityWallScreen() {
             val l = withContext(Dispatchers.IO) { PathfinderApi.leaderboard() }
             leaderboard = l
             leaderboardLoading = false
+        }
+    }
+
+    fun checkForUpdate() {
+        updating = true
+        updateMsg = "Checking…"
+        scope.launch {
+            val latest = withContext(Dispatchers.IO) { Updater.latest() }
+            if (latest == null) {
+                updating = false
+                updateMsg = "Couldn't reach the update server."
+                return@launch
+            }
+            if (latest.versionName.isEmpty() || latest.versionName == BuildConfig.VERSION_NAME) {
+                updating = false
+                updateMsg = "You're on the latest version (${BuildConfig.VERSION_NAME})."
+                return@launch
+            }
+            updateMsg = "Downloading ${latest.versionName}…"
+            val apk = withContext(Dispatchers.IO) { Updater.download(context) }
+            updating = false
+            if (apk == null) {
+                updateMsg = "Download failed — try again."
+                return@launch
+            }
+            updateMsg = if (Updater.install(context, apk)) {
+                "Opening installer for ${latest.versionName}…"
+            } else {
+                "Allow installing apps from CityWall, then tap Check for updates again."
+            }
         }
     }
 
@@ -547,6 +579,25 @@ private fun CityWallScreen() {
                             color = CwMuted,
                             fontSize = 12.sp,
                         )
+                    }
+                }
+                SectionLabel("UPDATES")
+                Surface(color = CwSurface, shape = RoundedCornerShape(14.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "Version ${BuildConfig.VERSION_NAME}",
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        OutlinedButton(
+                            onClick = { checkForUpdate() },
+                            enabled = !updating,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Text("Check for updates", color = MaterialTheme.colorScheme.onBackground)
+                        }
+                        updateMsg?.let { Text(it, color = CwMuted, fontSize = 12.sp) }
                     }
                 }
                 SectionLabel("ABOUT")

@@ -24,7 +24,8 @@ class WallpaperRepository(
     private fun fileFor(name: String): File {
         val tag = generator.variantKey
         val base = if (tag.isEmpty()) slug(name) else "${slug(name)}-$tag"
-        return File(dir, "$base.png")
+        // Cache namespace — bump to drop stale entries (e.g. transient blank renders).
+        return File(dir, "$base-c2.png")
     }
 
     fun isCached(name: String): Boolean = fileFor(name).exists()
