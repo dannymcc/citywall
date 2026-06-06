@@ -4,7 +4,15 @@ A personal Android app that periodically detects your location, resolves it to a
 town or city, and sets the home and lock screen wallpaper to a generated **dark
 street-map** of that place. Each city is generated once and cached forever.
 
-Sideload build for one device (recent Pixel). Not Play Store ready, by design.
+Heading toward the Play Store; current builds are debug-signed for sideloading.
+
+## Download
+
+**[⬇ Download the latest APK](https://github.com/dannymcc/citywall/releases/latest/download/citywall-debug.apk)** — debug-signed, sideloadable on Android 8.0+.
+
+Every tagged release attaches a fresh APK; browse them on the
+[Releases page](https://github.com/dannymcc/citywall/releases). On the device, enable
+"install unknown apps" for your browser, open the APK, and install.
 
 ## The look
 
