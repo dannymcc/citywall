@@ -42,12 +42,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,7 +57,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -89,15 +90,16 @@ private val FREQ_LABELS = listOf(
 private val FREQ_VALUES = listOf(15L, 30L, 60L, 180L, 360L, 720L, 1440L)
 private val PALETTE_NAMES = MapWallpaperGenerator.Palette.ALL.map { it.name }
 
+/** The next permission to guide the user toward, one at a time. */
+private enum class PermStep { LOCATION, BACKGROUND, NOTIFICATIONS, DONE }
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
-            CityWallTheme {
-                CityWallScreen()
-            }
+            CityWallTheme { CityWallScreen() }
         }
     }
 }
@@ -115,11 +117,12 @@ private fun CityWallScreen() {
     var joinWorldMap by remember { mutableStateOf(settings.joinWorldMap) }
 
     var preview by remember { mutableStateOf<Bitmap?>(null) }
-    var cityName by remember { mutableStateOf<String?>(null) }
+    var previewCity by remember { mutableStateOf<String?>(null) }
+    var previewIsSample by remember { mutableStateOf(false) }
     var generating by remember { mutableStateOf(false) }
     var statusMsg by remember { mutableStateOf<String?>(null) }
+    var hasBackup by remember { mutableStateOf(WallpaperBackup.available(context)) }
 
-    // Re-check permissions whenever we come back to the foreground (e.g. from Settings).
     var permRefresh by remember { mutableStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -130,8 +133,6 @@ private fun CityWallScreen() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Keyed on permRefresh so they re-evaluate after returning from the system dialog
-    // or the Settings screen.
     val hasCoarse = remember(permRefresh) {
         granted(context, Manifest.permission.ACCESS_COARSE_LOCATION)
     }
@@ -139,45 +140,91 @@ private fun CityWallScreen() {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             granted(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
     }
+    val hasNotifications = remember(permRefresh) {
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            granted(context, Manifest.permission.POST_NOTIFICATIONS)
+    }
+    val step = when {
+        !hasCoarse -> PermStep.LOCATION
+        !hasBackground -> PermStep.BACKGROUND
+        !hasNotifications -> PermStep.NOTIFICATIONS
+        else -> PermStep.DONE
+    }
 
-    val fgLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
+    val locationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
     ) { permRefresh++ }
-    val bgLauncher = rememberLauncherForActivityResult(
+    val backgroundLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { permRefresh++ }
+    val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { permRefresh++ }
 
-    fun update() {
+    fun generatePreview(useLocation: Boolean) {
         generating = true
         statusMsg = null
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val fix = CityResolver(context).currentCity(useCapital)
-                        ?: return@withContext Result.failure(IllegalStateException("no-location"))
+                    val fix = if (useLocation) {
+                        CityResolver(context).currentCity(useCapital)
+                    } else {
+                        sampleCapital(context).let { CityFix(it.name, it.lat, it.lon) }
+                    } ?: return@withContext Result.failure(IllegalStateException("no-location"))
                     val (w, h) = WallpaperWorker.screenSize(context)
                     val generator = MapWallpaperGenerator(palette = settings.palette)
                     val bmp = WallpaperRepository(context, generator)
                         .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
-                    WallpaperWorker.applyWallpaper(context, bmp)
-                    Result.success(fix.name to bmp)
+                    Result.success(Triple(fix.name, bmp, !useLocation))
                 } catch (e: Exception) {
                     Result.failure(e)
                 }
             }
             generating = false
-            result.onSuccess { (name, bmp) ->
+            result.onSuccess { (name, bmp, isSample) ->
                 preview = bmp
-                cityName = name
-                statusMsg = "Wallpaper set for $name"
+                previewCity = name
+                previewIsSample = isSample
             }.onFailure {
                 statusMsg = if (it.message == "no-location") {
-                    "Couldn't get your location — grant access below."
+                    "Couldn't get your location — allow access below."
                 } else {
-                    "Couldn't update: ${it.message}"
+                    "Couldn't generate the map: ${it.message}"
                 }
             }
         }
+    }
+
+    fun setAsWallpaper() {
+        val bmp = preview ?: return
+        generating = true
+        statusMsg = null
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                WallpaperBackup.backupOnce(context) // preserve their original first
+                WallpaperWorker.applyWallpaper(context, bmp)
+            }
+            generating = false
+            hasBackup = WallpaperBackup.available(context)
+            statusMsg = "Wallpaper set" + (previewCity?.let { " for $it" } ?: "")
+        }
+    }
+
+    fun restoreWallpaper() {
+        generating = true
+        statusMsg = null
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) { WallpaperBackup.restore(context) }
+            generating = false
+            statusMsg = if (ok) "Previous wallpaper restored" else "No backup available to restore"
+        }
+    }
+
+    // Show what the app does before any permission is requested: generate a sample
+    // capital once (cached after the first time, so it's free on later launches).
+    LaunchedEffect(Unit) {
+        if (preview == null && !hasCoarse) generatePreview(useLocation = false)
     }
 
     Column(
@@ -187,35 +234,48 @@ private fun CityWallScreen() {
             .verticalScroll(rememberScrollState())
             .windowInsetsPadding(WindowInsets.systemBars)
             .padding(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Wordmark()
+        Header()
 
-        HeroPreview(preview = preview, cityName = cityName, generating = generating)
+        HeroPreview(
+            preview = preview,
+            cityName = previewCity,
+            isSample = previewIsSample,
+            generating = generating,
+        )
 
-        if (!hasCoarse || !hasBackground) {
-            PermissionCard(
-                hasCoarse = hasCoarse,
-                onGrant = {
-                    when {
-                        !hasCoarse -> fgLauncher.launch(foregroundPermissions())
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
-                            openAppSettings(context) // background can't be granted from a dialog
-                        else ->
-                            bgLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                    }
+        // Primary actions: preview first, then set, then optional restore.
+        Button(
+            onClick = { generatePreview(useLocation = hasCoarse) },
+            enabled = !generating,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (preview == null) CwAccent else CwSurface,
+                contentColor = if (preview == null) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onBackground
                 },
+            ),
+        ) {
+            Text(
+                if (hasCoarse) "Preview my city" else "Preview a sample city",
+                fontWeight = FontWeight.SemiBold,
             )
         }
 
         Button(
-            onClick = { update() },
-            enabled = hasCoarse && !generating,
+            onClick = { setAsWallpaper() },
+            enabled = preview != null && !generating,
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = CwAccent,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
+                disabledContainerColor = CwSurface,
+                disabledContentColor = CwMuted,
             ),
         ) {
             if (generating) {
@@ -225,31 +285,63 @@ private fun CityWallScreen() {
                     strokeWidth = 2.dp,
                 )
                 Spacer(Modifier.width(12.dp))
-                Text("Generating…", fontWeight = FontWeight.SemiBold)
+                Text("Working…", fontWeight = FontWeight.SemiBold)
             } else {
                 Text("Set as wallpaper", fontWeight = FontWeight.SemiBold)
             }
         }
 
+        if (hasBackup) {
+            OutlinedButton(
+                onClick = { restoreWallpaper() },
+                enabled = !generating,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Text("Restore previous wallpaper", color = MaterialTheme.colorScheme.onBackground)
+            }
+        }
+
         statusMsg?.let { Text(it, color = CwMuted, fontSize = 13.sp) }
+
+        // Guided permissions — one step at a time.
+        if (step != PermStep.DONE) {
+            PermissionStepCard(
+                step = step,
+                onAction = {
+                    when (step) {
+                        PermStep.LOCATION ->
+                            locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                        PermStep.BACKGROUND ->
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                openAppSettings(context)
+                            } else {
+                                backgroundLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                            }
+                        PermStep.NOTIFICATIONS ->
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        PermStep.DONE -> {}
+                    }
+                },
+            )
+        }
 
         SectionLabel("LOOK")
         PickerRow("Palette", PALETTE_NAMES, PALETTE_NAMES.indexOf(paletteName)) { i ->
             paletteName = PALETTE_NAMES[i]
             settings.paletteName = paletteName
+            if (preview != null) generatePreview(useLocation = !previewIsSample) // re-preview in new palette
         }
 
         SectionLabel("UPDATES")
         PickerRow("Every", FREQ_LABELS, FREQ_VALUES.indexOf(freqMinutes)) { i ->
             freqMinutes = FREQ_VALUES[i]
             settings.updateMinutes = freqMinutes
-            if (autoUpdate) WallpaperScheduler.enablePeriodic(context) // apply new interval
+            if (autoUpdate) WallpaperScheduler.enablePeriodic(context)
         }
-        SwitchRow(
-            "Auto-update",
-            "Refresh the wallpaper in the background.",
-            autoUpdate,
-        ) { on ->
+        SwitchRow("Auto-update", "Refresh the wallpaper in the background.", autoUpdate) { on ->
             autoUpdate = on
             settings.autoUpdate = on
             if (on) WallpaperScheduler.enablePeriodic(context)
@@ -286,29 +378,37 @@ private fun CityWallScreen() {
 }
 
 @Composable
-private fun Wordmark() {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Canvas(modifier = Modifier.size(22.dp)) {
-            val s = size.minDimension
-            fun line(x1: Float, y1: Float, x2: Float, y2: Float, w: Float, c: Color) =
-                drawLine(c, Offset(x1 * s, y1 * s), Offset(x2 * s, y2 * s), w, StrokeCap.Round)
-            line(0.10f, 0.58f, 0.92f, 0.58f, 4f, CwAccent)
-            line(0.46f, 0.10f, 0.46f, 0.92f, 3f, Color(0xFF566073))
-            line(0.18f, 0.30f, 0.80f, 0.74f, 2.5f, Color(0xFF444E5F))
+private fun Header() {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Canvas(modifier = Modifier.size(22.dp)) {
+                val s = size.minDimension
+                fun line(x1: Float, y1: Float, x2: Float, y2: Float, w: Float, c: Color) =
+                    drawLine(c, Offset(x1 * s, y1 * s), Offset(x2 * s, y2 * s), w, StrokeCap.Round)
+                line(0.10f, 0.58f, 0.92f, 0.58f, 4f, CwAccent)
+                line(0.46f, 0.10f, 0.46f, 0.92f, 3f, Color(0xFF566073))
+                line(0.18f, 0.30f, 0.80f, 0.74f, 2.5f, Color(0xFF444E5F))
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "CityWall",
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.5.sp,
+            )
         }
-        Spacer(Modifier.width(10.dp))
         Text(
-            "CityWall",
-            color = MaterialTheme.colorScheme.onBackground,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.5.sp,
+            "Your city, drawn in roads.",
+            color = CwMuted,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(start = 32.dp, top = 2.dp),
         )
     }
 }
 
 @Composable
-private fun HeroPreview(preview: Bitmap?, cityName: String?, generating: Boolean) {
+private fun HeroPreview(preview: Bitmap?, cityName: String?, isSample: Boolean, generating: Boolean) {
     Surface(
         color = MapSlate,
         shape = RoundedCornerShape(24.dp),
@@ -318,7 +418,7 @@ private fun HeroPreview(preview: Bitmap?, cityName: String?, generating: Boolean
             if (preview != null) {
                 Image(
                     bitmap = preview.asImageBitmap(),
-                    contentDescription = "Current wallpaper preview",
+                    contentDescription = "Wallpaper preview",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -326,35 +426,42 @@ private fun HeroPreview(preview: Bitmap?, cityName: String?, generating: Boolean
                 PlaceholderMap()
             }
 
-            if (cityName != null) {
+            if (isSample && preview != null) {
+                Surface(
+                    color = Color(0xCC0E1116),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                ) {
+                    Text(
+                        "SAMPLE",
+                        style = MonoLabel,
+                        color = CwAccent,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+
+            if (cityName != null && preview != null) {
                 Box(
                     Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, Color(0xCC000000)),
-                            ),
-                        )
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
                         .padding(20.dp),
                 ) {
                     Column {
+                        Text(cityName, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                         Text(
-                            cityName,
-                            color = Color.White,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            if (isSample) "a sample — preview your own next" else "cached on this device",
+                            color = CwMuted,
+                            fontSize = 12.sp,
                         )
-                        Text("cached on this device", color = CwMuted, fontSize = 12.sp)
                     }
                 }
             }
 
             if (generating) {
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
-                    color = CwAccent,
-                )
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = CwAccent)
             }
         }
     }
@@ -367,37 +474,62 @@ private fun PlaceholderMap() {
             val faint = Color(0xFF333B49)
             val w = size.width
             val h = size.height
-            for (k in 1..5) {
-                val y = h * k / 6f
-                drawLine(faint, Offset(0f, y), Offset(w, y), 1.5f)
-            }
-            for (k in 1..3) {
-                val x = w * k / 4f
-                drawLine(faint, Offset(x, 0f), Offset(x, h), 1.5f)
-            }
+            for (k in 1..5) drawLine(faint, Offset(0f, h * k / 6f), Offset(w, h * k / 6f), 1.5f)
+            for (k in 1..3) drawLine(faint, Offset(w * k / 4f, 0f), Offset(w * k / 4f, h), 1.5f)
             drawLine(CwAccent, Offset(0f, h * 0.5f), Offset(w, h * 0.5f), 4f, StrokeCap.Round)
         }
-        Text("Tap “Set as wallpaper”", color = CwMuted, fontSize = 14.sp)
+        Text("Generating a preview…", color = CwMuted, fontSize = 14.sp)
+    }
+}
+
+@Composable
+private fun PermissionStepCard(step: PermStep, onAction: () -> Unit) {
+    val (title, body, cta) = when (step) {
+        PermStep.LOCATION -> Triple(
+            "Step 1 — Location",
+            "To map the town you're actually in, CityWall needs coarse location. That's it — never precise.",
+            "Allow location",
+        )
+        PermStep.BACKGROUND -> Triple(
+            "Step 2 — Background location",
+            "So the wallpaper can update as you travel, choose “Allow all the time” on the next screen.",
+            "Open settings",
+        )
+        PermStep.NOTIFICATIONS -> Triple(
+            "Step 3 — Notifications (optional)",
+            "Let CityWall tell you when it sets a new wallpaper. You can skip this.",
+            "Allow notifications",
+        )
+        PermStep.DONE -> Triple("", "", "")
+    }
+    Surface(color = CwAccent.copy(alpha = 0.12f), shape = RoundedCornerShape(16.dp)) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(title, style = MonoLabel, color = CwAccent)
+            Text(body, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp)
+            Button(
+                onClick = onAction,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = CwAccent,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ),
+            ) {
+                Text(cta)
+            }
+        }
     }
 }
 
 @Composable
 private fun SectionLabel(text: String) {
-    Text(
-        text,
-        style = MonoLabel,
-        color = CwMuted,
-        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
-    )
+    Text(text, style = MonoLabel, color = CwMuted, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
 }
 
 @Composable
-private fun PickerRow(
-    label: String,
-    options: List<String>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
-) {
+private fun PickerRow(label: String, options: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val current = options.getOrElse(selectedIndex) { options.firstOrNull().orEmpty() }
     Surface(color = CwSurface, shape = RoundedCornerShape(14.dp)) {
@@ -416,13 +548,10 @@ private fun PickerRow(
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 options.forEachIndexed { i, option ->
-                    DropdownMenuItem(
-                        text = { Text(option) },
-                        onClick = {
-                            onSelect(i)
-                            expanded = false
-                        },
-                    )
+                    DropdownMenuItem(text = { Text(option) }, onClick = {
+                        onSelect(i)
+                        expanded = false
+                    })
                 }
             }
         }
@@ -430,12 +559,7 @@ private fun PickerRow(
 }
 
 @Composable
-private fun SwitchRow(
-    label: String,
-    subtitle: String,
-    checked: Boolean,
-    onToggle: (Boolean) -> Unit,
-) {
+private fun SwitchRow(label: String, subtitle: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
     Surface(color = CwSurface, shape = RoundedCornerShape(14.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -460,52 +584,16 @@ private fun SwitchRow(
     }
 }
 
-@Composable
-private fun PermissionCard(hasCoarse: Boolean, onGrant: () -> Unit) {
-    Surface(color = CwAccent.copy(alpha = 0.12f), shape = RoundedCornerShape(16.dp)) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                if (!hasCoarse) "Location access needed" else "Allow background updates",
-                color = MaterialTheme.colorScheme.onBackground,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                if (!hasCoarse) {
-                    "CityWall maps the town you're in. Coarse location only — never precise."
-                } else {
-                    "Choose “Allow all the time” so the wallpaper can refresh on its own."
-                },
-                color = CwMuted,
-                fontSize = 13.sp,
-            )
-            Button(
-                onClick = onGrant,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CwAccent,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            ) {
-                Text(if (!hasCoarse) "Grant access" else "Open settings")
-            }
-        }
-    }
-}
-
 // --- helpers ---
 
 private fun granted(context: Context, permission: String): Boolean =
     context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
-private fun foregroundPermissions(): Array<String> = buildList {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        add(Manifest.permission.POST_NOTIFICATIONS)
-    }
-    add(Manifest.permission.ACCESS_COARSE_LOCATION)
-}.toTypedArray()
+/** A capital to preview before any permission: the device-locale country, else London. */
+private fun sampleCapital(context: Context): Capital {
+    val country = context.resources.configuration.locales[0].country
+    return Capitals.forCountry(country) ?: Capitals.forCountry("GB")!!
+}
 
 private fun openAppSettings(context: Context) {
     context.startActivity(

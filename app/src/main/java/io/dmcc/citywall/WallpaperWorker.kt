@@ -25,6 +25,7 @@ class WallpaperWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
             val generator = MapWallpaperGenerator(palette = settings.palette)
             val bmp = WallpaperRepository(applicationContext, generator)
                 .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
+            WallpaperBackup.backupOnce(applicationContext) // preserve the original first
             applyWallpaper(applicationContext, bmp)
             Result.success()
         } catch (_: Exception) {
