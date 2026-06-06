@@ -32,26 +32,26 @@ jobs:
 
       # Build the debug variant: it's signed with the debug keystore, so it's
       # installable for sideload without managing release signing secrets.
-      - name: Build debug APK
+      - name: Build release APK
         env:
           # Monotonic versionCode so each published APK installs as an update.
           CITYWALL_VERSION_CODE: ${{ github.run_number }}
           CITYWALL_VERSION_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleRelease --no-daemon
 
       # Give the asset a clean, stable name so releases/latest/download resolves.
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk citywall-debug.apk
+        run: cp app/build/outputs/apk/release/app-release.apk citywall.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: citywall-debug-apk
-          path: citywall-debug.apk
+          name: citywall-apk
+          path: citywall.apk
 
       # On a version tag, publish the APK to the Releases page.
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: citywall-debug.apk
+          files: citywall.apk

@@ -39,11 +39,22 @@ class Settings(ctx: Context) {
         get() = prefs.getBoolean(KEY_WORLD_MAP, false)
         set(v) = prefs.edit().putBoolean(KEY_WORLD_MAP, v).apply()
 
-    /** A manually chosen city (capital name), or null to use GPS. Manual locations are
-     *  preview-only and can never claim a city on the world map (anti-cheat). */
-    var manualLocation: String?
+    /** A manually chosen place name (any location on earth), or null to use GPS.
+     *  Manual locations are preview-only and can never claim a city (anti-cheat). */
+    val manualLocation: String?
         get() = prefs.getString(KEY_MANUAL, null)
-        set(v) = prefs.edit().putString(KEY_MANUAL, v).apply()
+
+    fun setManual(name: String, lat: Double, lon: Double) {
+        prefs.edit()
+            .putString(KEY_MANUAL, name)
+            .putString(KEY_MANUAL_LAT, lat.toString())
+            .putString(KEY_MANUAL_LON, lon.toString())
+            .apply()
+    }
+
+    fun clearManual() {
+        prefs.edit().remove(KEY_MANUAL).remove(KEY_MANUAL_LAT).remove(KEY_MANUAL_LON).apply()
+    }
 
     /** Dismissed (skipped) optional permission prompts, so they stop nagging. */
     var dismissedBackgroundPrompt: Boolean
@@ -79,9 +90,13 @@ class Settings(ctx: Context) {
     val palette: MapWallpaperGenerator.Palette
         get() = MapWallpaperGenerator.Palette.byName(paletteName)
 
-    /** The manual fix if one is set and resolvable, else null. */
-    fun manualFix(): CityFix? =
-        manualLocation?.let { Capitals.byName(it) }?.let { CityFix(it.name, it.lat, it.lon) }
+    /** The manual fix if one is set, else null. */
+    fun manualFix(): CityFix? {
+        val name = prefs.getString(KEY_MANUAL, null) ?: return null
+        val lat = prefs.getString(KEY_MANUAL_LAT, null)?.toDoubleOrNull() ?: return null
+        val lon = prefs.getString(KEY_MANUAL_LON, null)?.toDoubleOrNull() ?: return null
+        return CityFix(name, lat, lon)
+    }
 
     companion object {
         const val DEFAULT_MINUTES = 60L
@@ -91,6 +106,8 @@ class Settings(ctx: Context) {
         private const val KEY_AUTO = "auto_update"
         private const val KEY_WORLD_MAP = "join_world_map"
         private const val KEY_MANUAL = "manual_location"
+        private const val KEY_MANUAL_LAT = "manual_lat"
+        private const val KEY_MANUAL_LON = "manual_lon"
         private const val KEY_DISMISS_BG = "dismiss_background_prompt"
         private const val KEY_DISMISS_NOTIF = "dismiss_notifications_prompt"
         private const val KEY_EXPLORER = "explorer_id"

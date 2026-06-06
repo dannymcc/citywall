@@ -42,16 +42,17 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -100,13 +101,13 @@ private val FREQ_LABELS = listOf(
 )
 private val FREQ_VALUES = listOf(15L, 30L, 60L, 180L, 360L, 720L, 1440L)
 private val PALETTE_NAMES = MapWallpaperGenerator.Palette.ALL.map { it.name }
-private val CAPITAL_NAMES = Capitals.ALL.map { it.name }
 private val TARGET_LABELS = listOf("Home & lock", "Home screen", "Lock screen")
 private val TARGET_VALUES = listOf(Settings.TARGET_BOTH, Settings.TARGET_HOME, Settings.TARGET_LOCK)
 private val TAB_LABELS = listOf("Wallpaper", "Pathfinder", "Settings", "About")
 
 private enum class PermStep { LOCATION, BACKGROUND, NOTIFICATIONS, DONE }
 private enum class Source { GPS, MANUAL, SAMPLE }
+private class GenOutcome(val name: String, val bmp: Bitmap, val source: Source, val claim: String?)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -132,7 +133,8 @@ private fun CityWallScreen() {
     var autoUpdate by remember { mutableStateOf(settings.autoUpdate) }
     var joinWorldMap by remember { mutableStateOf(settings.joinWorldMap) }
     var wallpaperTarget by remember { mutableStateOf(settings.wallpaperTarget) }
-    var manualLocation by remember { mutableStateOf(settings.manualLocation) }
+    var manualName by remember { mutableStateOf(settings.manualLocation) }
+    var manualQuery by remember { mutableStateOf("") }
     var dismissedBg by remember { mutableStateOf(settings.dismissedBackgroundPrompt) }
     var dismissedNotif by remember { mutableStateOf(settings.dismissedNotificationsPrompt) }
 
@@ -143,6 +145,8 @@ private fun CityWallScreen() {
     var statusMsg by remember { mutableStateOf<String?>(null) }
     var hasBackup by remember { mutableStateOf(WallpaperBackup.available(context)) }
     var showLicences by remember { mutableStateOf(false) }
+    var leaderboard by remember { mutableStateOf<List<PathfinderApi.Leader>>(emptyList()) }
+    var leaderboardLoading by remember { mutableStateOf(false) }
 
     var permRefresh by remember { mutableStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -186,9 +190,9 @@ private fun CityWallScreen() {
         generating = true
         statusMsg = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
+            val outcome = withContext(Dispatchers.IO) {
                 try {
-                    val manual = if (manualLocation != null) settings.manualFix() else null
+                    val manual = settings.manualFix()
                     val pair: Pair<CityFix?, Source> = when {
                         manual != null -> manual to Source.MANUAL
                         hasCoarse -> CityResolver(context).currentCity(useCapital) to Source.GPS
@@ -198,33 +202,43 @@ private fun CityWallScreen() {
                     val fix = pair.first
                         ?: return@withContext Result.failure(IllegalStateException("no-location"))
                     val (w, h) = WallpaperWorker.screenSize(context)
-                    val generator = MapWallpaperGenerator(
+                    val local = MapWallpaperGenerator(
                         palette = settings.palette,
                         geometryCacheDir = File(context.filesDir, "geometry"),
                     )
+                    val generator = RemoteWallpaperGenerator(settings.palette, local)
                     val bmp = WallpaperRepository(context, generator)
                         .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
+                    var claim: String? = null
                     if (apply) {
                         WallpaperBackup.backupOnce(context)
                         WallpaperWorker.applyWallpaper(context, bmp, settings.wallpaperFlags())
+                        if (pair.second == Source.GPS && joinWorldMap) {
+                            claim = PathfinderApi.claim(explorerId, fix.name, fix.lat, fix.lon, false)
+                        }
                     }
-                    Result.success(Triple(fix.name, bmp, pair.second))
+                    Result.success(GenOutcome(fix.name, bmp, pair.second, claim))
                 } catch (e: Exception) {
                     Result.failure(e)
                 }
             }
             generating = false
-            result.onSuccess { (name, bmp, src) ->
-                preview = bmp
-                previewCity = name
-                previewSource = src
+            outcome.onSuccess { o ->
+                preview = o.bmp
+                previewCity = o.name
+                previewSource = o.source
                 if (apply) {
                     hasBackup = WallpaperBackup.available(context)
-                    statusMsg = "Wallpaper set for $name"
+                    statusMsg = when (o.claim) {
+                        "claimed" -> "Wallpaper set — you're the Pathfinder of ${o.name}!"
+                        "taken" -> "Wallpaper set. ${o.name} is already claimed by another explorer."
+                        "yours" -> "Wallpaper set for ${o.name} — your claim."
+                        else -> "Wallpaper set for ${o.name}"
+                    }
                 }
             }.onFailure {
                 statusMsg = if (it.message == "no-location") {
-                    "Couldn't get a location — set one manually below or allow access."
+                    "Couldn't get a location — set one manually in Settings or allow access."
                 } else {
                     "Couldn't generate the map: ${it.message}"
                 }
@@ -242,9 +256,37 @@ private fun CityWallScreen() {
         }
     }
 
-    // First load: preview the manual city, the real location (if allowed), or a sample.
+    fun resolveManual(query: String) {
+        if (query.isBlank()) return
+        generating = true
+        statusMsg = null
+        scope.launch {
+            val coords = withContext(Dispatchers.IO) { CityResolver(context).coordsFor(query) }
+            generating = false
+            if (coords != null) {
+                settings.setManual(query, coords.first, coords.second)
+                manualName = query
+                generate(false)
+            } else {
+                statusMsg = "Couldn't find “$query”."
+            }
+        }
+    }
+
+    fun refreshLeaderboard() {
+        leaderboardLoading = true
+        scope.launch {
+            val l = withContext(Dispatchers.IO) { PathfinderApi.leaderboard() }
+            leaderboard = l
+            leaderboardLoading = false
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (preview == null) generate(apply = false)
+    }
+    LaunchedEffect(joinWorldMap, selectedTab) {
+        if (joinWorldMap && selectedTab == 1) refreshLeaderboard()
     }
 
     Scaffold(
@@ -281,7 +323,7 @@ private fun CityWallScreen() {
                 ) {
                     Text(
                         when {
-                            manualLocation != null -> "Preview"
+                            manualName != null -> "Preview"
                             hasCoarse -> "Preview my city"
                             else -> "Preview a sample"
                         },
@@ -363,42 +405,85 @@ private fun CityWallScreen() {
             1 -> TabColumn(inner) {
                 Header()
                 SectionLabel("PATHFINDER")
-                Surface(color = CwSurface, shape = RoundedCornerShape(14.dp)) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Your explorer ID", style = MonoLabel, color = CwMuted)
-                        Text(explorerId, color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Your anonymous identity on the Pathfinder map.", color = CwMuted, fontSize = 12.sp)
-                    }
-                }
                 SwitchRow(
                     "Join Pathfinder",
-                    "Opt in to claim cities. Off keeps everything on this device.",
+                    "Claim the cities you visit and climb the leaderboard.",
                     joinWorldMap,
                 ) { on ->
                     joinWorldMap = on
                     settings.joinWorldMap = on
+                    if (on) refreshLeaderboard()
                 }
-                PathfinderInfo(joinWorldMap)
+                if (!joinWorldMap) {
+                    PathfinderExplainer()
+                } else {
+                    Surface(color = CwSurface, shape = RoundedCornerShape(14.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Your explorer ID", style = MonoLabel, color = CwMuted)
+                            Text(explorerId, color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Your anonymous identity on the leaderboard.", color = CwMuted, fontSize = 12.sp)
+                        }
+                    }
+                    SectionLabel("LEADERBOARD")
+                    when {
+                        leaderboardLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = CwAccent, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(10.dp))
+                            Text("Loading…", color = CwMuted, fontSize = 13.sp)
+                        }
+                        leaderboard.isEmpty() -> Text(
+                            "No pathfinders yet — be the first to claim a city.",
+                            color = CwMuted,
+                            fontSize = 13.sp,
+                        )
+                        else -> leaderboard.forEach { LeaderRow(it, it.explorerId == explorerId) }
+                    }
+                    Text(
+                        "Never shared: your live location or home. Manual-location previews can't claim.",
+                        color = CwMuted,
+                        fontSize = 12.sp,
+                    )
+                }
             }
 
             2 -> TabColumn(inner) {
                 Header()
                 SectionLabel("LOCATION")
-                SwitchRow(
-                    "Set location manually",
-                    "Pick a city instead of GPS. Manual spots are preview-only — they can't claim a city.",
-                    manualLocation != null,
-                ) { on ->
-                    manualLocation = if (on) (manualLocation ?: sampleCapital(context).name) else null
-                    settings.manualLocation = manualLocation
-                    generate(apply = false)
+                OutlinedTextField(
+                    value = manualQuery,
+                    onValueChange = { manualQuery = it },
+                    singleLine = true,
+                    label = { Text("Search any place on earth") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(
+                    onClick = { resolveManual(manualQuery) },
+                    enabled = !generating && manualQuery.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CwAccent,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                ) {
+                    Text("Use this location")
                 }
-                val manualCity = manualLocation
-                if (manualCity != null) {
-                    PickerRow("City", CAPITAL_NAMES, CAPITAL_NAMES.indexOf(manualCity)) { i ->
-                        manualLocation = CAPITAL_NAMES[i]
-                        settings.manualLocation = CAPITAL_NAMES[i]
-                        generate(apply = false)
+                manualName?.let { mn ->
+                    Surface(color = CwSurface, shape = RoundedCornerShape(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Manual location", style = MonoLabel, color = CwMuted)
+                                Text(mn, color = MaterialTheme.colorScheme.onBackground)
+                            }
+                            TextButton(onClick = {
+                                settings.clearManual()
+                                manualName = null
+                                generate(false)
+                            }) { Text("Use GPS", color = CwAccent) }
+                        }
                     }
                 }
                 SwitchRow(
@@ -425,6 +510,23 @@ private fun CityWallScreen() {
 
             else -> TabColumn(inner) {
                 Header()
+                SectionLabel("DATA")
+                Surface(color = CwSurface, shape = RoundedCornerShape(14.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            "CityWall draws maps from OpenStreetMap road and water data.",
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontSize = 13.sp,
+                        )
+                        Text(
+                            "To save time, popular and already-claimed places are fetched ready-made " +
+                                "from our server instead of being drawn on your device. Anything the " +
+                                "server doesn't have is generated locally.",
+                            color = CwMuted,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
                 SectionLabel("ABOUT")
                 Surface(color = CwSurface, shape = RoundedCornerShape(14.dp)) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -511,29 +613,18 @@ private fun TabIcon(index: Int, active: Boolean) {
 @Composable
 private fun Header() {
     Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Canvas(modifier = Modifier.size(22.dp)) {
-                val s = size.minDimension
-                fun line(x1: Float, y1: Float, x2: Float, y2: Float, w: Float, c: Color) =
-                    drawLine(c, Offset(x1 * s, y1 * s), Offset(x2 * s, y2 * s), w, StrokeCap.Round)
-                line(0.10f, 0.58f, 0.92f, 0.58f, 4f, CwAccent)
-                line(0.46f, 0.10f, 0.46f, 0.92f, 3f, Color(0xFF566073))
-                line(0.18f, 0.30f, 0.80f, 0.74f, 2.5f, Color(0xFF444E5F))
-            }
-            Spacer(Modifier.width(10.dp))
-            Text(
-                "CityWall",
-                color = MaterialTheme.colorScheme.onBackground,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.5.sp,
-            )
-        }
+        Text(
+            "CityWall",
+            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.5.sp,
+        )
         Text(
             "Your city, drawn in roads.",
             color = CwMuted,
             fontSize = 13.sp,
-            modifier = Modifier.padding(start = 32.dp, top = 2.dp),
+            modifier = Modifier.padding(top = 2.dp),
         )
     }
 }
@@ -623,25 +714,45 @@ private fun PlaceholderMap() {
 }
 
 @Composable
-private fun PathfinderInfo(joined: Boolean) {
+private fun PathfinderExplainer() {
     Surface(color = CwSurface, shape = RoundedCornerShape(14.dp)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("What's shared", style = MonoLabel, color = CwMuted)
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Be a Pathfinder", color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.SemiBold)
             Text(
-                "• The names of cities you claim, and your explorer ID — shown on a shared map.\n" +
-                    "• Being first to a city makes you its “Pathfinder”.",
+                "Be the first to set a wallpaper for a city and you claim it — you become its " +
+                    "Pathfinder. Turning this on enters you on a global leaderboard of who's " +
+                    "claimed the most cities.",
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 13.sp,
             )
             Text(
-                "Never shared: your live location, your home, or anything at all while this is off. " +
-                    "Manual-location previews can't claim cities. You can leave any time.",
+                "When on, you share the names of cities you claim and your explorer ID. Never " +
+                    "shared: your live location or home — and nothing at all while this is off. " +
+                    "Manual-location previews can't claim. You can leave any time.",
                 color = CwMuted,
                 fontSize = 12.sp,
             )
-            if (joined) {
-                Text("Claiming goes live with the CityWall online service.", color = CwAccent, fontSize = 12.sp)
-            }
+        }
+    }
+}
+
+@Composable
+private fun LeaderRow(leader: PathfinderApi.Leader, isMe: Boolean) {
+    Surface(
+        color = if (isMe) CwAccent.copy(alpha = 0.14f) else CwSurface,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("#${leader.rank}", color = CwAccent, fontWeight = FontWeight.Bold, modifier = Modifier.width(44.dp))
+            Text(
+                leader.explorerId + if (isMe) "  (you)" else "",
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f),
+            )
+            Text("${leader.claims}", color = CwMuted)
         }
     }
 }
@@ -667,8 +778,8 @@ private fun LicencesDialog(onOpenUrl: (String) -> Unit, onDismiss: () -> Unit) {
                 )
                 LicenceBlock("Map queries", "Overpass API.", "overpass-api.de", "https://overpass-api.de", onOpenUrl)
                 Text(
-                    "Map imagery is rendered on-device by CityWall from OpenStreetMap data — " +
-                        "no third-party map tiles or imagery providers.",
+                    "Maps are rendered from OpenStreetMap road and water data — no third-party " +
+                        "map tiles or imagery providers.",
                     color = CwMuted,
                     fontSize = 13.sp,
                 )

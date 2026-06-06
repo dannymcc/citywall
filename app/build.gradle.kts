@@ -32,11 +32,21 @@ android {
             keyPassword = "citywall"
             storeType = "PKCS12"
         }
+        create("release") {
+            storeFile = file("citywall.keystore")
+            storePassword = "citywall"
+            keyAlias = "citywall"
+            keyPassword = "citywall"
+            storeType = "PKCS12"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Same key as debug, so a release APK installs as an update over the
+            // earlier debug builds (v0.1.1+) with no uninstall.
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

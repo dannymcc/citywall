@@ -63,7 +63,7 @@ object Capitals {
         "SE" to Capital("Stockholm", 59.3293, 18.0686),
         "CH" to Capital("Bern", 46.9480, 7.4474),
         "UA" to Capital("Kyiv", 50.4501, 30.5234),
-        "GB" to Capital("London", 51.5074, -0.1278),
+        "GB" to Capital("London", 51.5024, 0.0028), // Greenwich peninsula — the Thames bend
         "VA" to Capital("Vatican City", 41.9029, 12.4534),
 
         // Americas
