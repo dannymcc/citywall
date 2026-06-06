@@ -19,7 +19,13 @@ class WallpaperRepository(
     private fun slug(name: String): String =
         name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
-    private fun fileFor(name: String): File = File(dir, "${slug(name)}.png")
+    // Namespace the file by the generator's variant (e.g. palette) so changing the
+    // look caches separately rather than serving a stale PNG.
+    private fun fileFor(name: String): File {
+        val tag = generator.variantKey
+        val base = if (tag.isEmpty()) slug(name) else "${slug(name)}-$tag"
+        return File(dir, "$base.png")
+    }
 
     fun isCached(name: String): Boolean = fileFor(name).exists()
 

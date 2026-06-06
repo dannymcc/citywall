@@ -16,9 +16,12 @@ class WallpaperWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
 
     override fun doWork(): Result {
         return try {
-            val fix = CityResolver(applicationContext).currentCity() ?: return Result.retry()
+            val settings = Settings(applicationContext)
+            val fix = CityResolver(applicationContext).currentCity(settings.useCapital)
+                ?: return Result.retry()
             val (w, h) = screenSize(applicationContext)
-            val bmp = WallpaperRepository(applicationContext)
+            val generator = MapWallpaperGenerator(palette = settings.palette)
+            val bmp = WallpaperRepository(applicationContext, generator)
                 .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
             applyWallpaper(applicationContext, bmp)
             Result.success()

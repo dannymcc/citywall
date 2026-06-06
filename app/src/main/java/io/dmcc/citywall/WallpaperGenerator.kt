@@ -14,4 +14,11 @@ import android.graphics.Bitmap
  */
 interface WallpaperGenerator {
     fun generate(cityName: String, lat: Double, lon: Double, widthPx: Int, heightPx: Int): Bitmap
+
+    /**
+     * Distinguishes cache entries for different render variants (e.g. colour palette),
+     * so changing the look regenerates once per city rather than serving a stale PNG.
+     * Empty means "no variant".
+     */
+    val variantKey: String get() = ""
 }

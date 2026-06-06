@@ -9,24 +9,25 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 /**
- * Schedules the hourly wallpaper refresh. WorkManager persists this across reboot on
- * its own, so there's no BootReceiver. Tune [INTERVAL_HOURS] to change the cadence
- * (15 minutes is the platform floor).
+ * Schedules the periodic wallpaper refresh. The interval comes from [Settings]
+ * (user-configurable). WorkManager persists this across reboot on its own, so there's
+ * no BootReceiver. 15 minutes is the platform floor.
  */
 object WallpaperScheduler {
     private const val UNIQUE_WORK = "citywall-periodic"
-    private const val INTERVAL_HOURS = 1L
 
     fun enablePeriodic(ctx: Context) {
+        val minutes = Settings(ctx).updateMinutes.coerceAtLeast(15)
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
-        val request = PeriodicWorkRequestBuilder<WallpaperWorker>(INTERVAL_HOURS, TimeUnit.HOURS)
+        val request = PeriodicWorkRequestBuilder<WallpaperWorker>(minutes, TimeUnit.MINUTES)
             .setConstraints(constraints)
             .build()
+        // UPDATE (not KEEP) so re-enabling after changing the frequency applies it.
         WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
             UNIQUE_WORK,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             request,
         )
     }

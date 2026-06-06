@@ -36,14 +36,30 @@ There is no Android SDK in this checkout's tooling, so build with Android Studio
 `minSdk 33`, `targetSdk`/`compileSdk 35`, Java 17. Let Studio bump AGP/Kotlin if it
 offers a newer stable combo.
 
-## Tuning knobs
+## In-app settings
+
+All opt-in; defaults reproduce the original behaviour (hourly, Midnight Slate, real
+town). Persisted in `SharedPreferences`.
+
+- **Update frequency** — 15 minutes up to daily. 15 min is the platform floor.
+  Re-tap *Enable periodic updates* after changing it to apply the new interval.
+- **Colour palette** — Midnight Slate, Carbon, Blueprint, Amber, Forest. Each city
+  caches per palette, so switching theme regenerates once rather than serving stale.
+- **Capital-city mode** — map the capital of the country you're in instead of your
+  actual town (falls back to your town if the country isn't in the lookup).
+
+The permission flow guides you through Settings when a dialog can't grant a
+permission (background location on Android 11+, or anything permanently denied).
+
+## Tuning knobs (in code)
 
 - **Zoom:** `halfHeightMetres` in `MapWallpaperGenerator` (default 2200 m).
-- **Palette / which roads draw:** the `RoadClass` table and `classify()` in
+- **Palettes:** add presets to `MapWallpaperGenerator.Palette.ALL`; they appear in the
+  picker automatically.
+- **Which roads draw:** the `RoadClass` table and `classify()` in
   `MapWallpaperGenerator`. footway/path/cycleway/pedestrian/steps are skipped — add
   cases to bring them back.
-- **Background colour:** `backgroundColour` in `MapWallpaperGenerator`.
-- **Interval:** `INTERVAL_HOURS` in `WallpaperScheduler` (15 min is the floor).
+- **Capital lookup:** `Capitals.MAP` (ISO country code → capital name).
 
 ## Overpass etiquette
 

@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Address
 import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
@@ -30,11 +31,27 @@ class CityResolver(private val ctx: Context) {
         ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
+    /**
+     * @param useCapital when true, returns the capital of the country the user is in
+     *   (centred on the capital), falling back to the real local area if the country
+     *   isn't known or the capital can't be located.
+     */
     @SuppressLint("MissingPermission") // gate checked via hasCoarse()
-    fun currentCity(): CityFix? {
+    fun currentCity(useCapital: Boolean = false): CityFix? {
         if (!hasCoarse()) return null
         val loc = acquireLocation() ?: return null
-        val name = reverseGeocode(loc.latitude, loc.longitude) ?: return null
+        val address = reverseGeocode(loc.latitude, loc.longitude) ?: return null
+
+        if (useCapital) {
+            val capital = Capitals.forCountry(address.countryCode)
+            val coords = capital?.let { coordsFor(it) }
+            if (capital != null && coords != null) {
+                return CityFix(capital, coords.first, coords.second)
+            }
+            // else fall through to the real local area
+        }
+
+        val name = address.locality ?: address.subAdminArea ?: address.adminArea ?: return null
         return CityFix(name, loc.latitude, loc.longitude)
     }
 
@@ -95,15 +112,13 @@ class CityResolver(private val ctx: Context) {
         return null
     }
 
-    private fun reverseGeocode(lat: Double, lon: Double): String? {
+    private fun reverseGeocode(lat: Double, lon: Double): Address? {
         if (!Geocoder.isPresent()) return null
         val latch = CountDownLatch(1)
-        val ref = AtomicReference<String?>()
+        val ref = AtomicReference<Address?>()
         try {
             Geocoder(ctx, Locale.getDefault()).getFromLocation(lat, lon, 1) { addresses ->
-                addresses.firstOrNull()?.let { a ->
-                    ref.set(a.locality ?: a.subAdminArea ?: a.adminArea)
-                }
+                ref.set(addresses.firstOrNull())
                 latch.countDown()
             }
             latch.await(20, TimeUnit.SECONDS)

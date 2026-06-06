@@ -20,25 +20,30 @@ import kotlin.math.cos
  *   list. Point this at a self-hosted instance to warm aggressively.
  * @param halfHeightMetres the zoom control: half the real-world height of the view.
  *   Default 2200 m gives a ~4.4 km tall view matching the reference density.
+ * @param palette the colour theme (background + per-class road colours).
  */
 class MapWallpaperGenerator(
     private val overpassUrl: String = "https://overpass-api.de/api/interpreter",
     private val halfHeightMetres: Double = 2200.0,
+    private val palette: Palette = Palette.DEFAULT,
 ) : WallpaperGenerator {
 
-    private val backgroundColour = 0xFF1A1E27.toInt()
+    // Cache entries are namespaced by palette so switching theme regenerates once.
+    override val variantKey: String =
+        palette.name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
     /**
      * Road classes. `rank` controls draw order (low rank drawn first, so major roads
-     * sit on top); `widthDp` and `colour` control the look. Tune freely.
+     * sit on top); `widthDp` controls thickness. Colours come from the [Palette],
+     * indexed by `rank`. Tune freely.
      */
-    private enum class RoadClass(val rank: Int, val widthDp: Float, val colour: Int) {
-        MINOR(0, 1.4f, 0xFF333B49.toInt()),
-        SERVICE(1, 1.1f, 0xFF2C3340.toInt()),
-        TERTIARY(2, 2.2f, 0xFF444E5F.toInt()),
-        SECONDARY(3, 3.0f, 0xFF566073.toInt()),
-        PRIMARY(4, 4.0f, 0xFF6B7689.toInt()),
-        MAJOR(5, 5.2f, 0xFF7E8AA0.toInt()),
+    private enum class RoadClass(val rank: Int, val widthDp: Float) {
+        MINOR(0, 1.4f),
+        SERVICE(1, 1.1f),
+        TERTIARY(2, 2.2f),
+        SECONDARY(3, 3.0f),
+        PRIMARY(4, 4.0f),
+        MAJOR(5, 5.2f),
     }
 
     /**
@@ -113,7 +118,7 @@ class MapWallpaperGenerator(
     ): Bitmap {
         val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(backgroundColour)
+        canvas.drawColor(palette.background)
 
         val strokeScale = widthPx / 1080f
         val lonSpan = east - west
@@ -152,11 +157,60 @@ class MapWallpaperGenerator(
 
         for (roadClass in RoadClass.values().sortedBy { it.rank }) {
             val paths = buckets[roadClass] ?: continue
-            paint.color = roadClass.colour
+            paint.color = palette.roadColours[roadClass.rank]
             paint.strokeWidth = roadClass.widthDp * strokeScale
             for (p in paths) canvas.drawPath(p, paint)
         }
 
         return bitmap
+    }
+
+    /**
+     * A colour theme. [roadColours] is indexed by road rank 0..5
+     * (MINOR, SERVICE, TERTIARY, SECONDARY, PRIMARY, MAJOR) — minor/dim first,
+     * major/bright last. Add presets to [ALL] to offer more options in the UI.
+     */
+    class Palette(val name: String, val background: Int, val roadColours: IntArray) {
+        companion object {
+            val MIDNIGHT_SLATE = Palette(
+                "Midnight Slate", 0xFF1A1E27.toInt(),
+                intArrayOf(
+                    0xFF333B49.toInt(), 0xFF2C3340.toInt(), 0xFF444E5F.toInt(),
+                    0xFF566073.toInt(), 0xFF6B7689.toInt(), 0xFF7E8AA0.toInt(),
+                ),
+            )
+            val CARBON = Palette(
+                "Carbon", 0xFF0D0D0D.toInt(),
+                intArrayOf(
+                    0xFF2A2A2A.toInt(), 0xFF242424.toInt(), 0xFF3A3A3A.toInt(),
+                    0xFF4D4D4D.toInt(), 0xFF6A6A6A.toInt(), 0xFF8C8C8C.toInt(),
+                ),
+            )
+            val BLUEPRINT = Palette(
+                "Blueprint", 0xFF0A1A2F.toInt(),
+                intArrayOf(
+                    0xFF16324F.toInt(), 0xFF13283F.toInt(), 0xFF1E4B73.toInt(),
+                    0xFF2C6491.toInt(), 0xFF3E86BE.toInt(), 0xFF5BA7E0.toInt(),
+                ),
+            )
+            val AMBER = Palette(
+                "Amber", 0xFF1A1408.toInt(),
+                intArrayOf(
+                    0xFF3A2E14.toInt(), 0xFF33280F.toInt(), 0xFF4D3E1C.toInt(),
+                    0xFF6B5526.toInt(), 0xFF8C6F30.toInt(), 0xFFB8923F.toInt(),
+                ),
+            )
+            val FOREST = Palette(
+                "Forest", 0xFF0C1A12.toInt(),
+                intArrayOf(
+                    0xFF1E3A2A.toInt(), 0xFF193024.toInt(), 0xFF2A5640.toInt(),
+                    0xFF357056.toInt(), 0xFF3F8A66.toInt(), 0xFF56B084.toInt(),
+                ),
+            )
+
+            val DEFAULT = MIDNIGHT_SLATE
+            val ALL = listOf(MIDNIGHT_SLATE, CARBON, BLUEPRINT, AMBER, FOREST)
+            fun byName(name: String): Palette = ALL.firstOrNull { it.name == name } ?: DEFAULT
+        }
     }
 }
