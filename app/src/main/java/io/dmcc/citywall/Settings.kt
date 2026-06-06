@@ -65,6 +65,17 @@ class Settings(ctx: Context) {
         else -> WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK
     }
 
+    /** A stable, anonymous explorer ID for this install — the identity shown on the
+     *  Pathfinder map. Generated once on first read and persisted. */
+    val explorerId: String
+        get() {
+            prefs.getString(KEY_EXPLORER, null)?.let { return it }
+            val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+            val id = "Explorer-" + (1..5).map { alphabet.random() }.joinToString("")
+            prefs.edit().putString(KEY_EXPLORER, id).apply()
+            return id
+        }
+
     val palette: MapWallpaperGenerator.Palette
         get() = MapWallpaperGenerator.Palette.byName(paletteName)
 
@@ -82,6 +93,7 @@ class Settings(ctx: Context) {
         private const val KEY_MANUAL = "manual_location"
         private const val KEY_DISMISS_BG = "dismiss_background_prompt"
         private const val KEY_DISMISS_NOTIF = "dismiss_notifications_prompt"
+        private const val KEY_EXPLORER = "explorer_id"
         private const val KEY_TARGET = "wallpaper_target"
         const val TARGET_BOTH = "both"
         const val TARGET_HOME = "home"

@@ -2,6 +2,7 @@
 <resources>
     <!-- App window / splash background: near-black, slightly cooler than the map. -->
     <color name="cw_background">#FF0E1116</color>
-    <!-- Adaptive launcher icon background: the map's slate-navy. -->
-    <color name="ic_launcher_background">#FF1A1E27</color>
+    <!-- Adaptive launcher icon background: the CityWall scheme slate (shown only at
+         mask corners; the Manchester-map foreground is full-bleed). -->
+    <color name="ic_launcher_background">#FF252E37</color>
 </resources>

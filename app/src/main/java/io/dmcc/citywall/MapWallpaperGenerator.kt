@@ -204,9 +204,9 @@ class MapWallpaperGenerator(
         companion object {
             // Inverted polarity: light slate-teal blocks with dark roads carved into
             // them, ramping from subtle minor streets to near-black major arterials.
-            // Matched from the "Pathfinder" reference. This is the standard scheme.
-            val PATHFINDER = Palette(
-                "Pathfinder", 0xFF252E37.toInt(),
+            // This is the standard CityWall scheme.
+            val CITYWALL = Palette(
+                "CityWall", 0xFF252E37.toInt(),
                 intArrayOf(
                     0xFF0D141D.toInt(), 0xFF0A111A.toInt(), 0xFF070E16.toInt(),
                     0xFF050A12.toInt(), 0xFF03080F.toInt(), 0xFF00040B.toInt(),
@@ -248,8 +248,8 @@ class MapWallpaperGenerator(
                 ),
             )
 
-            val DEFAULT = PATHFINDER
-            val ALL = listOf(PATHFINDER, MIDNIGHT_SLATE, CARBON, BLUEPRINT, AMBER, FOREST)
+            val DEFAULT = CITYWALL
+            val ALL = listOf(CITYWALL, MIDNIGHT_SLATE, CARBON, BLUEPRINT, AMBER, FOREST)
             fun byName(name: String): Palette = ALL.firstOrNull { it.name == name } ?: DEFAULT
         }
     }

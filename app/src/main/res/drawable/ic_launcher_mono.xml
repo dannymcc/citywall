@@ -1,26 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Adaptive-icon foreground: a stylised road junction, content kept within the
-     central safe zone of the 108x108 canvas. Transparent background. -->
+<!-- Monochrome / themed-icon layer and splash mark: a simple road junction. The
+     system tints this as an alpha mask, so the colour here is just a placeholder. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Major road (thick, light) -->
+    android:viewportHeight="108"
+    android:tint="#FFFFFFFF">
     <path
-        android:strokeColor="#7E8AA0"
+        android:strokeColor="#FFFFFF"
         android:strokeWidth="7"
         android:strokeLineCap="round"
         android:pathData="M26,60 H82" />
-    <!-- Secondary road (vertical) -->
     <path
-        android:strokeColor="#566073"
+        android:strokeColor="#FFFFFF"
         android:strokeWidth="5"
         android:strokeLineCap="round"
         android:pathData="M52,28 V82" />
-    <!-- Tertiary road (diagonal) -->
     <path
-        android:strokeColor="#444E5F"
+        android:strokeColor="#FFFFFF"
         android:strokeWidth="4"
         android:strokeLineCap="round"
         android:pathData="M32,40 L74,70" />

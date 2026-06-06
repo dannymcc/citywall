@@ -60,12 +60,13 @@ offers a newer stable combo.
 
 ## In-app settings
 
-All opt-in; defaults reproduce the original behaviour (hourly, Midnight Slate, real
-town). Persisted in `SharedPreferences`.
+All opt-in; defaults are hourly, the CityWall scheme, and your real town. Persisted
+in `SharedPreferences`. The UI is split into bottom tabs: Wallpaper, Pathfinder,
+Settings, About.
 
 - **Update frequency** — 15 minutes up to daily. 15 min is the platform floor.
   Re-tap *Enable periodic updates* after changing it to apply the new interval.
-- **Colour palette** — Midnight Slate, Carbon, Blueprint, Amber, Forest. Each city
+- **Colour palette** — CityWall (default, dark roads on slate), Midnight Slate, Carbon, Blueprint, Amber, Forest. Each city
   caches per palette, so switching theme regenerates once rather than serving stale.
 - **Capital-city mode** — map the capital of the country you're in instead of your
   actual town (falls back to your town if the country isn't in the lookup).
