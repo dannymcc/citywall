@@ -18,15 +18,18 @@ import java.net.URLEncoder
 class RemoteWallpaperGenerator(
     private val palette: MapWallpaperGenerator.Palette,
     private val fallback: WallpaperGenerator,
+    private val embassyCountry: String? = null,
     private val serverUrl: String = PathfinderApi.SERVER_URL,
 ) : WallpaperGenerator {
 
     override val variantKey: String =
-        palette.name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+        palette.name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-') +
+            (embassyCountry?.takeIf { it.isNotBlank() }?.let { "-emb-${it.lowercase()}" } ?: "")
 
     override fun generate(cityName: String, lat: Double, lon: Double, widthPx: Int, heightPx: Int): Bitmap {
         try {
-            val q = "name=${enc(cityName)}&lat=$lat&lon=$lon&palette=${enc(palette.name)}&w=$widthPx&h=$heightPx"
+            val emb = embassyCountry?.takeIf { it.isNotBlank() }?.let { "&embassy=${enc(it)}" } ?: ""
+            val q = "name=${enc(cityName)}&lat=$lat&lon=$lon&palette=${enc(palette.name)}&w=$widthPx&h=$heightPx$emb"
             val conn = (URL("$serverUrl/wallpaper?$q").openConnection() as HttpURLConnection).apply {
                 connectTimeout = 20_000
                 readTimeout = 90_000

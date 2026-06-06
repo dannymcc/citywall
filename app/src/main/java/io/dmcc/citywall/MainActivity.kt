@@ -104,6 +104,11 @@ private val PALETTE_NAMES = MapWallpaperGenerator.Palette.ALL.map { it.name }
 private val TARGET_LABELS = listOf("Home & lock", "Home screen", "Lock screen")
 private val TARGET_VALUES = listOf(Settings.TARGET_BOTH, Settings.TARGET_HOME, Settings.TARGET_LOCK)
 private val TAB_LABELS = listOf("Wallpaper", "Pathfinder", "Settings", "About")
+// Country options for the embassy overlay: "" (none) + ISO codes sorted by name.
+private val EMBASSY_CODES: List<String> =
+    listOf("") + java.util.Locale.getISOCountries().sortedBy { java.util.Locale("", it).displayCountry }
+private val EMBASSY_LABELS: List<String> =
+    EMBASSY_CODES.map { if (it.isEmpty()) "None" else java.util.Locale("", it).displayCountry }
 
 private enum class PermStep { LOCATION, BACKGROUND, NOTIFICATIONS, DONE }
 private enum class Source { GPS, MANUAL, SAMPLE }
@@ -133,6 +138,7 @@ private fun CityWallScreen() {
     var autoUpdate by remember { mutableStateOf(settings.autoUpdate) }
     var joinWorldMap by remember { mutableStateOf(settings.joinWorldMap) }
     var wallpaperTarget by remember { mutableStateOf(settings.wallpaperTarget) }
+    var embassyCountry by remember { mutableStateOf(settings.embassyCountry) }
     var manualName by remember { mutableStateOf(settings.manualLocation) }
     var manualQuery by remember { mutableStateOf("") }
     var dismissedBg by remember { mutableStateOf(settings.dismissedBackgroundPrompt) }
@@ -206,7 +212,7 @@ private fun CityWallScreen() {
                         palette = settings.palette,
                         geometryCacheDir = File(context.filesDir, "geometry"),
                     )
-                    val generator = RemoteWallpaperGenerator(settings.palette, local)
+                    val generator = RemoteWallpaperGenerator(settings.palette, local, settings.embassyCountry)
                     val bmp = WallpaperRepository(context, generator)
                         .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
                     var claim: String? = null
@@ -494,6 +500,22 @@ private fun CityWallScreen() {
                     useCapital = on
                     settings.useCapital = on
                 }
+                SectionLabel("EMBASSIES")
+                PickerRow(
+                    "Show embassies from",
+                    EMBASSY_LABELS,
+                    EMBASSY_CODES.indexOf(embassyCountry ?: "").coerceAtLeast(0),
+                ) { i ->
+                    val code = EMBASSY_CODES[i].ifEmpty { null }
+                    embassyCountry = code
+                    settings.embassyCountry = code
+                    if (preview != null) generate(apply = false)
+                }
+                Text(
+                    "Marks that country's embassies on the map as subtle dots, where they fall in view.",
+                    color = CwMuted,
+                    fontSize = 12.sp,
+                )
                 SectionLabel("UPDATES")
                 PickerRow("Every", FREQ_LABELS, FREQ_VALUES.indexOf(freqMinutes)) { i ->
                     freqMinutes = FREQ_VALUES[i]

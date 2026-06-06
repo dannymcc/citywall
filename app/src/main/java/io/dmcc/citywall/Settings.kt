@@ -25,6 +25,12 @@ class Settings(ctx: Context) {
         get() = prefs.getBoolean(KEY_CAPITAL, false)
         set(v) = prefs.edit().putBoolean(KEY_CAPITAL, v).apply()
 
+    /** ISO 3166-1 alpha-2 code of a country whose embassies to mark on the map, or
+     *  null for none. */
+    var embassyCountry: String?
+        get() = prefs.getString(KEY_EMBASSY, null)
+        set(v) = prefs.edit().putString(KEY_EMBASSY, v).apply()
+
     /** Whether the hourly background worker is enabled. */
     var autoUpdate: Boolean
         get() = prefs.getBoolean(KEY_AUTO, false)
@@ -105,6 +111,7 @@ class Settings(ctx: Context) {
         private const val KEY_CAPITAL = "use_capital"
         private const val KEY_AUTO = "auto_update"
         private const val KEY_WORLD_MAP = "join_world_map"
+        private const val KEY_EMBASSY = "embassy_country"
         private const val KEY_MANUAL = "manual_location"
         private const val KEY_MANUAL_LAT = "manual_lat"
         private const val KEY_MANUAL_LON = "manual_lon"
