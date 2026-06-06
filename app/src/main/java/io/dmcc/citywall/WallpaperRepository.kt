@@ -19,23 +19,29 @@ class WallpaperRepository(
     private fun slug(name: String): String =
         name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
-    // Namespace the file by the generator's variant (e.g. palette) so changing the
-    // look caches separately rather than serving a stale PNG.
-    private fun fileFor(name: String): File {
+    // ~100m-precision coordinate key so the same name at different coordinates doesn't
+    // collide (which produced misaligned maps). Locale.US so the decimal is a dot.
+    private fun coordKey(lat: Double, lon: Double): String =
+        String.format(java.util.Locale.US, "%.3f_%.3f", lat, lon).replace("-", "m").replace(".", "p")
+
+    // Namespace the file by coordinates + the generator's variant (e.g. palette) so
+    // each location/look caches separately. The coord component also drops pre-coord
+    // stale entries (e.g. the earlier misaligned/blank renders).
+    private fun fileFor(name: String, lat: Double, lon: Double): File {
         val tag = generator.variantKey
-        val base = if (tag.isEmpty()) slug(name) else "${slug(name)}-$tag"
-        // Cache namespace — bump to drop stale entries (e.g. transient blank renders).
-        return File(dir, "$base-c2.png")
+        val coords = coordKey(lat, lon)
+        val base = if (tag.isEmpty()) "${slug(name)}-$coords" else "${slug(name)}-$coords-$tag"
+        return File(dir, "$base.png")
     }
 
-    fun isCached(name: String): Boolean = fileFor(name).exists()
+    fun isCached(name: String, lat: Double, lon: Double): Boolean = fileFor(name, lat, lon).exists()
 
     /**
      * Returns the cached PNG if present (no network), otherwise generates it, writes
      * it to disk, and returns it. Generation centres on [lat]/[lon].
      */
     fun getOrCreate(name: String, lat: Double, lon: Double, w: Int, h: Int): Bitmap {
-        val f = fileFor(name)
+        val f = fileFor(name, lat, lon)
         if (f.exists()) {
             BitmapFactory.decodeFile(f.absolutePath)?.let { return it }
         }
@@ -54,8 +60,8 @@ class WallpaperRepository(
     fun warm(cities: List<String>, w: Int, h: Int, perCityDelayMs: Long = 4000L) {
         val resolver = CityResolver(ctx)
         for (city in cities) {
-            if (isCached(city)) continue
             val coords = resolver.coordsFor(city) ?: continue
+            if (isCached(city, coords.first, coords.second)) continue
             try {
                 getOrCreate(city, coords.first, coords.second, w, h)
             } catch (_: Exception) {
