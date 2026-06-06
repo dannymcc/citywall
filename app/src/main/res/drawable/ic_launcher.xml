@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simple roads-on-dark vector so the build doesn't fail on a missing icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#1A1E27"
+        android:pathData="M0,0 h108 v108 h-108 z" />
+    <path
+        android:strokeColor="#7E8AA0"
+        android:strokeWidth="4"
+        android:pathData="M8,32 H100" />
+    <path
+        android:strokeColor="#566073"
+        android:strokeWidth="3"
+        android:pathData="M54,8 V100" />
+    <path
+        android:strokeColor="#444E5F"
+        android:strokeWidth="2.5"
+        android:pathData="M18,72 H94" />
+    <path
+        android:strokeColor="#333B49"
+        android:strokeWidth="2"
+        android:pathData="M30,8 V100" />
+    <path
+        android:strokeColor="#333B49"
+        android:strokeWidth="2"
+        android:pathData="M8,90 H100" />
+</vector>
