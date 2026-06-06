@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -84,6 +85,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.time.Year
 
 private val FREQ_LABELS = listOf(
     "15 minutes", "30 minutes", "Hourly", "Every 3 hours",
@@ -129,6 +131,7 @@ private fun CityWallScreen() {
     var generating by remember { mutableStateOf(false) }
     var statusMsg by remember { mutableStateOf<String?>(null) }
     var hasBackup by remember { mutableStateOf(WallpaperBackup.available(context)) }
+    var showLicences by remember { mutableStateOf(false) }
 
     var permRefresh by remember { mutableStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -392,7 +395,35 @@ private fun CityWallScreen() {
         }
         WorldMapInfo(joinWorldMap)
 
+        SectionLabel("ABOUT")
+        Surface(color = CwSurface, shape = RoundedCornerShape(14.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "© ${Year.now().value} Danny McClelland",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    "dmcc.io",
+                    color = CwAccent,
+                    fontSize = 14.sp,
+                    modifier = Modifier.clickable { openUrl(context, "https://dmcc.io") },
+                )
+                OutlinedButton(
+                    onClick = { showLicences = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text("Open source licences", color = MaterialTheme.colorScheme.onBackground)
+                }
+            }
+        }
+
         Spacer(Modifier.height(8.dp))
+    }
+
+    if (showLicences) {
+        LicencesDialog(onOpenUrl = { openUrl(context, it) }, onDismiss = { showLicences = false })
     }
 }
 
@@ -583,6 +614,72 @@ private fun PermissionStepCard(step: PermStep, onAction: () -> Unit, onDismiss: 
 }
 
 @Composable
+private fun LicencesDialog(onOpenUrl: (String) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CwSurface,
+        title = { Text("Open source", color = MaterialTheme.colorScheme.onBackground) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = CwAccent) } },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                LicenceBlock(
+                    "Map data",
+                    "© OpenStreetMap contributors, under the Open Database Licence (ODbL).",
+                    "openstreetmap.org/copyright",
+                    "https://www.openstreetmap.org/copyright",
+                    onOpenUrl,
+                )
+                LicenceBlock(
+                    "Map queries",
+                    "Overpass API.",
+                    "overpass-api.de",
+                    "https://overpass-api.de",
+                    onOpenUrl,
+                )
+                Text(
+                    "Map imagery is rendered on-device by CityWall from OpenStreetMap data — " +
+                        "no third-party map tiles or imagery providers.",
+                    color = CwMuted,
+                    fontSize = 13.sp,
+                )
+                Text("Built with", style = MonoLabel, color = CwMuted)
+                Text(
+                    "• Jetpack Compose & AndroidX — Apache 2.0\n" +
+                        "• Material 3 — Apache 2.0\n" +
+                        "• Kotlin & Kotlinx Coroutines — Apache 2.0\n" +
+                        "• AndroidX WorkManager, Core, SplashScreen — Apache 2.0",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 13.sp,
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun LicenceBlock(
+    title: String,
+    body: String,
+    linkText: String,
+    linkUrl: String,
+    onOpenUrl: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Medium)
+        Text(body, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp)
+        Text(
+            linkText,
+            color = CwAccent,
+            fontSize = 12.sp,
+            modifier = Modifier.clickable { onOpenUrl(linkUrl) },
+        )
+    }
+}
+
+@Composable
 private fun SectionLabel(text: String) {
     Text(text, style = MonoLabel, color = CwMuted, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
 }
@@ -663,4 +760,15 @@ private fun openAppSettings(context: Context) {
             if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         },
     )
+}
+
+private fun openUrl(context: Context, url: String) {
+    try {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+        )
+    } catch (_: Exception) {
+    }
 }
