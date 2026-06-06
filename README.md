@@ -14,12 +14,24 @@ thin and dim. Roundabouts appear naturally as small loops.
 
 ## How it works
 
+- **UI:** Jetpack Compose + Material 3, a dark cartographic theme (slate-mono accent),
+  adaptive icon and splash screen.
 - **Map data:** OpenStreetMap via the [Overpass API](https://overpass-api.de),
   rendered onto a `Canvas` by hand. No tiles, no labels, no API key, no Mapbox/Google.
-- **Location:** AOSP `LocationManager` (coarse only). No Play Services.
-- **Scheduling:** `WorkManager` periodic work, hourly. Survives reboot on its own.
-- **Caching:** one PNG per city in internal storage. A cache hit skips the network.
+- **Location:** AOSP `LocationManager` (coarse only). No Play Services. Async APIs on
+  API 33+, version-guarded legacy fallbacks below.
+- **Scheduling:** `WorkManager` periodic work. Survives reboot on its own.
+- **Caching:** one PNG per city (per palette) in internal storage. A cache hit skips
+  the network.
+- **Capitals:** all world capitals with coordinates are bundled (data only), so
+  capital mode is instant and offline.
 - **JSON:** built-in `org.json`.
+
+**Device support:** `minSdk 26` (Android 8.0+), `compile`/`targetSdk 35`, Java 17.
+
+The shared **world map / city-claiming** game is opt-in and not yet built — see
+[`docs/gamification.md`](docs/gamification.md). With it off (the default), the app is
+fully local and nothing leaves the device.
 
 ## Build & install
 
@@ -33,7 +45,7 @@ There is no Android SDK in this checkout's tooling, so build with Android Studio
    separate background prompt), then **Update wallpaper now**.
 4. Tap **Enable hourly updates** to schedule the background refresh.
 
-`minSdk 33`, `targetSdk`/`compileSdk 35`, Java 17. Let Studio bump AGP/Kotlin if it
+`minSdk 26`, `targetSdk`/`compileSdk 35`, Java 17. Let Studio bump AGP/Kotlin if it
 offers a newer stable combo.
 
 ## In-app settings

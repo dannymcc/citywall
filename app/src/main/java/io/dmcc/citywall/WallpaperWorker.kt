@@ -3,6 +3,8 @@ package io.dmcc.citywall
 import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Build
+import android.util.DisplayMetrics
 import android.view.WindowManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
@@ -41,14 +43,15 @@ class WallpaperWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
             )
         }
 
-        /** Screen size in pixels, preferring current window metrics. Reused by the activity. */
+        /** Screen size in pixels, preferring current window metrics (API 30+). */
+        @Suppress("DEPRECATION") // defaultDisplay/getRealMetrics on the API < 30 path
         fun screenSize(ctx: Context): Pair<Int, Int> {
-            return try {
-                val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val bounds = wm.currentWindowMetrics.bounds
                 bounds.width() to bounds.height()
-            } catch (_: Exception) {
-                val dm = ctx.resources.displayMetrics
+            } else {
+                val dm = DisplayMetrics().also { wm.defaultDisplay.getRealMetrics(it) }
                 dm.widthPixels to dm.heightPixels
             }
         }

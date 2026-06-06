@@ -24,6 +24,20 @@ class Settings(ctx: Context) {
         get() = prefs.getBoolean(KEY_CAPITAL, false)
         set(v) = prefs.edit().putBoolean(KEY_CAPITAL, v).apply()
 
+    /** Whether the hourly background worker is enabled. */
+    var autoUpdate: Boolean
+        get() = prefs.getBoolean(KEY_AUTO, false)
+        set(v) = prefs.edit().putBoolean(KEY_AUTO, v).apply()
+
+    /**
+     * Opt-in to the shared CityWall world map. OFF by default: while off, nothing
+     * about the user's location or claimed cities ever leaves the device. Turning it
+     * on is the only thing that enables any upload — see docs/gamification.md.
+     */
+    var joinWorldMap: Boolean
+        get() = prefs.getBoolean(KEY_WORLD_MAP, false)
+        set(v) = prefs.edit().putBoolean(KEY_WORLD_MAP, v).apply()
+
     val palette: MapWallpaperGenerator.Palette
         get() = MapWallpaperGenerator.Palette.byName(paletteName)
 
@@ -32,5 +46,7 @@ class Settings(ctx: Context) {
         private const val KEY_MINUTES = "update_minutes"
         private const val KEY_PALETTE = "palette"
         private const val KEY_CAPITAL = "use_capital"
+        private const val KEY_AUTO = "auto_update"
+        private const val KEY_WORLD_MAP = "join_world_map"
     }
 }

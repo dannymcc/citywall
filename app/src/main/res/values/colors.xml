@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App window / splash background: near-black, slightly cooler than the map. -->
+    <color name="cw_background">#FF0E1116</color>
+    <!-- Adaptive launcher icon background: the map's slate-navy. -->
+    <color name="ic_launcher_background">#FF1A1E27</color>
+</resources>
