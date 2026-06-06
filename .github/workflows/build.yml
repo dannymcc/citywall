@@ -8,6 +8,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Needed so the tag build can publish a GitHub Release with the APK asset.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
