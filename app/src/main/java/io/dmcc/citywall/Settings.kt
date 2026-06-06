@@ -1,5 +1,6 @@
 package io.dmcc.citywall
 
+import android.app.WallpaperManager
 import android.content.Context
 
 /**
@@ -38,8 +39,38 @@ class Settings(ctx: Context) {
         get() = prefs.getBoolean(KEY_WORLD_MAP, false)
         set(v) = prefs.edit().putBoolean(KEY_WORLD_MAP, v).apply()
 
+    /** A manually chosen city (capital name), or null to use GPS. Manual locations are
+     *  preview-only and can never claim a city on the world map (anti-cheat). */
+    var manualLocation: String?
+        get() = prefs.getString(KEY_MANUAL, null)
+        set(v) = prefs.edit().putString(KEY_MANUAL, v).apply()
+
+    /** Dismissed (skipped) optional permission prompts, so they stop nagging. */
+    var dismissedBackgroundPrompt: Boolean
+        get() = prefs.getBoolean(KEY_DISMISS_BG, false)
+        set(v) = prefs.edit().putBoolean(KEY_DISMISS_BG, v).apply()
+
+    var dismissedNotificationsPrompt: Boolean
+        get() = prefs.getBoolean(KEY_DISMISS_NOTIF, false)
+        set(v) = prefs.edit().putBoolean(KEY_DISMISS_NOTIF, v).apply()
+
+    /** Which screens to apply the wallpaper to: "both" (default), "home", or "lock". */
+    var wallpaperTarget: String
+        get() = prefs.getString(KEY_TARGET, TARGET_BOTH)!!
+        set(v) = prefs.edit().putString(KEY_TARGET, v).apply()
+
+    fun wallpaperFlags(): Int = when (wallpaperTarget) {
+        TARGET_HOME -> WallpaperManager.FLAG_SYSTEM
+        TARGET_LOCK -> WallpaperManager.FLAG_LOCK
+        else -> WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK
+    }
+
     val palette: MapWallpaperGenerator.Palette
         get() = MapWallpaperGenerator.Palette.byName(paletteName)
+
+    /** The manual fix if one is set and resolvable, else null. */
+    fun manualFix(): CityFix? =
+        manualLocation?.let { Capitals.byName(it) }?.let { CityFix(it.name, it.lat, it.lon) }
 
     companion object {
         const val DEFAULT_MINUTES = 60L
@@ -48,5 +79,12 @@ class Settings(ctx: Context) {
         private const val KEY_CAPITAL = "use_capital"
         private const val KEY_AUTO = "auto_update"
         private const val KEY_WORLD_MAP = "join_world_map"
+        private const val KEY_MANUAL = "manual_location"
+        private const val KEY_DISMISS_BG = "dismiss_background_prompt"
+        private const val KEY_DISMISS_NOTIF = "dismiss_notifications_prompt"
+        private const val KEY_TARGET = "wallpaper_target"
+        const val TARGET_BOTH = "both"
+        const val TARGET_HOME = "home"
+        const val TARGET_LOCK = "lock"
     }
 }

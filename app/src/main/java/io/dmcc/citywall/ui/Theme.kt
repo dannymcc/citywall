@@ -20,8 +20,8 @@ val CwOnBackground = Color(0xFFE6E9EF)
 val CwMuted = Color(0xFF8A93A3)
 val CwOutline = Color(0xFF2C3340)
 
-/** The map background colour, reused for the preview surface so they read as one. */
-val MapSlate = Color(0xFF1A1E27)
+/** The map background colour (Pathfinder default), reused for the preview surface. */
+val MapSlate = Color(0xFF252E37)
 
 private val CwColorScheme = darkColorScheme(
     primary = CwAccent,

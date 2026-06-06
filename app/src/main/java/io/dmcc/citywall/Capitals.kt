@@ -13,6 +13,8 @@ data class Capital(val name: String, val lat: Double, val lon: Double)
 object Capitals {
     fun forCountry(code: String?): Capital? = code?.let { MAP[it.uppercase()] }
 
+    fun byName(name: String): Capital? = ALL.firstOrNull { it.name == name }
+
     val ALL: List<Capital> by lazy { MAP.values.sortedBy { it.name } }
 
     private val MAP: Map<String, Capital> = mapOf(

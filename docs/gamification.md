@@ -6,10 +6,11 @@ today is fully local: nothing leaves the device.
 
 ## Product idea
 
-A shared **CityWall world map**. When a user visits a city for the first time and it
-hasn't been claimed by anyone, they **claim** it. The world map shows who holds each
-city. This turns "your wallpaper is the place you're in" into a light collection /
-exploration game.
+A shared **CityWall world map**. When a user is the **first** to generate a wallpaper
+for a city, they become its **Pathfinder** — they claim it. The world map shows who
+pathfound each city, and each user can see **a list of the cities they're the
+Pathfinder for**. This turns "your wallpaper is the place you're in" into a light
+collection / exploration game.
 
 ## Hard requirements (decided)
 
@@ -23,6 +24,10 @@ exploration game.
 3. **Anti-cheat.** GPS can be spoofed. Claims need at least basic plausibility checks
    (rate limiting, travel-speed sanity between consecutive claims, server-side
    reverse-geocode of submitted coordinates) before they count.
+4. **Manual locations never claim.** The app lets users pick a city manually
+   (`Settings.manualLocation`) for previewing/setting any city's wallpaper. A manual
+   fix is flagged client-side and is **never eligible to claim** — only a genuine
+   GPS fix at the place can make you its Pathfinder.
 
 ## Proposed backend — `citywall.dmcc.io`
 
@@ -49,6 +54,11 @@ Overpass+Canvas is only a few KB; Compose dominates the APK):
 - Offloads Overpass — the public endpoint isn't hit once per device per city.
 - Consistent look across devices; palette/zoom tuning happens in one place.
 - Enables **prefetch of nearby cities** on first load for an instant experience.
+- Lets the server **pre-render every capital × every palette** up front so picking a
+  capital or switching scheme is instant (the device can't feasibly pre-render ~190
+  cities × N palettes against the public Overpass). On-device, we approximate this by
+  caching the parsed geometry per city so a palette switch re-renders without the
+  network — see `MapWallpaperGenerator(geometryCacheDir = …)`.
 - Reuses the backend we already need for claims.
 
 Keep `MapWallpaperGenerator` (on-device) as the offline/no-server fallback, selected

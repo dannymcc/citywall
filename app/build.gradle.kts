@@ -15,8 +15,23 @@ android {
         // APIs are version-guarded in code (CityResolver, WallpaperWorker.screenSize).
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // versionCode auto-increments from the CI run number so each published APK is
+        // a higher version and installs as an update. Falls back to 1 for local builds.
+        versionCode = (System.getenv("CITYWALL_VERSION_CODE") ?: "1").toIntOrNull() ?: 1
+        versionName = System.getenv("CITYWALL_VERSION_NAME") ?: "1.0"
+    }
+
+    // Committed, non-secret debug-grade key. The point is a STABLE signature across
+    // builds — without it, each CI run mints a fresh debug key and APKs refuse to
+    // install over one another. A proper release key / Play App Signing comes later.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("citywall.keystore")
+            storePassword = "citywall"
+            keyAlias = "citywall"
+            keyPassword = "citywall"
+            storeType = "PKCS12"
+        }
     }
 
     buildTypes {

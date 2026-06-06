@@ -8,6 +8,7 @@ import android.util.DisplayMetrics
 import android.view.WindowManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import java.io.File
 
 /**
  * Periodic work: resolve the city, get-or-create its wallpaper, apply it. Any failure
@@ -19,14 +20,19 @@ class WallpaperWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
     override fun doWork(): Result {
         return try {
             val settings = Settings(applicationContext)
-            val fix = CityResolver(applicationContext).currentCity(settings.useCapital)
+            // Manual location wins if set; otherwise resolve via GPS.
+            val fix = settings.manualFix()
+                ?: CityResolver(applicationContext).currentCity(settings.useCapital)
                 ?: return Result.retry()
             val (w, h) = screenSize(applicationContext)
-            val generator = MapWallpaperGenerator(palette = settings.palette)
+            val generator = MapWallpaperGenerator(
+                palette = settings.palette,
+                geometryCacheDir = File(applicationContext.filesDir, "geometry"),
+            )
             val bmp = WallpaperRepository(applicationContext, generator)
                 .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
             WallpaperBackup.backupOnce(applicationContext) // preserve the original first
-            applyWallpaper(applicationContext, bmp)
+            applyWallpaper(applicationContext, bmp, settings.wallpaperFlags())
             Result.success()
         } catch (_: Exception) {
             Result.retry()
@@ -34,14 +40,13 @@ class WallpaperWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
     }
 
     companion object {
-        /** Applies [bitmap] to both the home and lock screens. Reused by the activity. */
-        fun applyWallpaper(ctx: Context, bitmap: Bitmap) {
-            WallpaperManager.getInstance(ctx).setBitmap(
-                bitmap,
-                null,
-                true,
-                WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK,
-            )
+        /** Applies [bitmap] to the screens selected by [flags] (home/lock/both). */
+        fun applyWallpaper(
+            ctx: Context,
+            bitmap: Bitmap,
+            flags: Int = WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK,
+        ) {
+            WallpaperManager.getInstance(ctx).setBitmap(bitmap, null, true, flags)
         }
 
         /** Screen size in pixels, preferring current window metrics (API 30+). */

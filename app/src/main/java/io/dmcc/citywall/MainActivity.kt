@@ -47,6 +47,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -82,6 +83,7 @@ import io.dmcc.citywall.ui.MonoLabel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 private val FREQ_LABELS = listOf(
     "15 minutes", "30 minutes", "Hourly", "Every 3 hours",
@@ -89,18 +91,19 @@ private val FREQ_LABELS = listOf(
 )
 private val FREQ_VALUES = listOf(15L, 30L, 60L, 180L, 360L, 720L, 1440L)
 private val PALETTE_NAMES = MapWallpaperGenerator.Palette.ALL.map { it.name }
+private val CAPITAL_NAMES = Capitals.ALL.map { it.name }
+private val TARGET_LABELS = listOf("Home & lock", "Home screen", "Lock screen")
+private val TARGET_VALUES = listOf(Settings.TARGET_BOTH, Settings.TARGET_HOME, Settings.TARGET_LOCK)
 
-/** The next permission to guide the user toward, one at a time. */
 private enum class PermStep { LOCATION, BACKGROUND, NOTIFICATIONS, DONE }
+private enum class Source { GPS, MANUAL, SAMPLE }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        setContent {
-            CityWallTheme { CityWallScreen() }
-        }
+        setContent { CityWallTheme { CityWallScreen() } }
     }
 }
 
@@ -115,10 +118,14 @@ private fun CityWallScreen() {
     var useCapital by remember { mutableStateOf(settings.useCapital) }
     var autoUpdate by remember { mutableStateOf(settings.autoUpdate) }
     var joinWorldMap by remember { mutableStateOf(settings.joinWorldMap) }
+    var wallpaperTarget by remember { mutableStateOf(settings.wallpaperTarget) }
+    var manualLocation by remember { mutableStateOf(settings.manualLocation) }
+    var dismissedBg by remember { mutableStateOf(settings.dismissedBackgroundPrompt) }
+    var dismissedNotif by remember { mutableStateOf(settings.dismissedNotificationsPrompt) }
 
     var preview by remember { mutableStateOf<Bitmap?>(null) }
     var previewCity by remember { mutableStateOf<String?>(null) }
-    var previewIsSample by remember { mutableStateOf(false) }
+    var previewSource by remember { mutableStateOf(Source.SAMPLE) }
     var generating by remember { mutableStateOf(false) }
     var statusMsg by remember { mutableStateOf<String?>(null) }
     var hasBackup by remember { mutableStateOf(WallpaperBackup.available(context)) }
@@ -146,8 +153,8 @@ private fun CityWallScreen() {
     }
     val step = when {
         !hasCoarse -> PermStep.LOCATION
-        !hasBackground -> PermStep.BACKGROUND
-        !hasNotifications -> PermStep.NOTIFICATIONS
+        !hasBackground && !dismissedBg -> PermStep.BACKGROUND
+        !hasNotifications && !dismissedNotif -> PermStep.NOTIFICATIONS
         else -> PermStep.DONE
     }
 
@@ -161,53 +168,55 @@ private fun CityWallScreen() {
         ActivityResultContracts.RequestPermission(),
     ) { permRefresh++ }
 
-    fun generatePreview(useLocation: Boolean) {
+    // Generate the map (preview only, or generate-and-set). Source priority: a manual
+    // city, else GPS, else a sample capital (so something shows before any permission).
+    fun generate(apply: Boolean) {
         generating = true
         statusMsg = null
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val fix = if (useLocation) {
-                        CityResolver(context).currentCity(useCapital)
-                    } else {
-                        sampleCapital(context).let { CityFix(it.name, it.lat, it.lon) }
-                    } ?: return@withContext Result.failure(IllegalStateException("no-location"))
+                    val manual = if (manualLocation != null) settings.manualFix() else null
+                    val pair: Pair<CityFix?, Source> = when {
+                        manual != null -> manual to Source.MANUAL
+                        hasCoarse -> CityResolver(context).currentCity(useCapital) to Source.GPS
+                        else -> sampleCapital(context)
+                            .let { CityFix(it.name, it.lat, it.lon) } to Source.SAMPLE
+                    }
+                    val fix = pair.first
+                        ?: return@withContext Result.failure(IllegalStateException("no-location"))
                     val (w, h) = WallpaperWorker.screenSize(context)
-                    val generator = MapWallpaperGenerator(palette = settings.palette)
+                    val generator = MapWallpaperGenerator(
+                        palette = settings.palette,
+                        geometryCacheDir = File(context.filesDir, "geometry"),
+                    )
                     val bmp = WallpaperRepository(context, generator)
                         .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
-                    Result.success(Triple(fix.name, bmp, !useLocation))
+                    if (apply) {
+                        WallpaperBackup.backupOnce(context)
+                        WallpaperWorker.applyWallpaper(context, bmp, settings.wallpaperFlags())
+                    }
+                    Result.success(Triple(fix.name, bmp, pair.second))
                 } catch (e: Exception) {
                     Result.failure(e)
                 }
             }
             generating = false
-            result.onSuccess { (name, bmp, isSample) ->
+            result.onSuccess { (name, bmp, src) ->
                 preview = bmp
                 previewCity = name
-                previewIsSample = isSample
+                previewSource = src
+                if (apply) {
+                    hasBackup = WallpaperBackup.available(context)
+                    statusMsg = "Wallpaper set for $name"
+                }
             }.onFailure {
                 statusMsg = if (it.message == "no-location") {
-                    "Couldn't get your location — allow access below."
+                    "Couldn't get a location — set one manually below or allow access."
                 } else {
                     "Couldn't generate the map: ${it.message}"
                 }
             }
-        }
-    }
-
-    fun setAsWallpaper() {
-        val bmp = preview ?: return
-        generating = true
-        statusMsg = null
-        scope.launch {
-            withContext(Dispatchers.IO) {
-                WallpaperBackup.backupOnce(context) // preserve their original first
-                WallpaperWorker.applyWallpaper(context, bmp)
-            }
-            generating = false
-            hasBackup = WallpaperBackup.available(context)
-            statusMsg = "Wallpaper set" + (previewCity?.let { " for $it" } ?: "")
         }
     }
 
@@ -221,10 +230,10 @@ private fun CityWallScreen() {
         }
     }
 
-    // Show what the app does before any permission is requested: generate a sample
-    // capital once (cached after the first time, so it's free on later launches).
+    // Show what the app does before any permission: preview the manual city, or a
+    // sample capital. Cached after the first time, so later launches are free.
     LaunchedEffect(Unit) {
-        if (preview == null && !hasCoarse) generatePreview(useLocation = false)
+        if (preview == null && (manualLocation != null || !hasCoarse)) generate(apply = false)
     }
 
     Column(
@@ -238,44 +247,32 @@ private fun CityWallScreen() {
     ) {
         Header()
 
-        HeroPreview(
-            preview = preview,
-            cityName = previewCity,
-            isSample = previewIsSample,
-            generating = generating,
-        )
+        HeroPreview(preview, previewCity, previewSource, generating)
 
-        // Primary actions: preview first, then set, then optional restore.
-        Button(
-            onClick = { generatePreview(useLocation = hasCoarse) },
+        OutlinedButton(
+            onClick = { generate(apply = false) },
             enabled = !generating,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
+            modifier = Modifier.fillMaxWidth().height(50.dp),
             shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (preview == null) CwAccent else CwSurface,
-                contentColor = if (preview == null) {
-                    MaterialTheme.colorScheme.onPrimary
-                } else {
-                    MaterialTheme.colorScheme.onBackground
-                },
-            ),
         ) {
             Text(
-                if (hasCoarse) "Preview my city" else "Preview a sample city",
-                fontWeight = FontWeight.SemiBold,
+                when {
+                    manualLocation != null -> "Preview"
+                    hasCoarse -> "Preview my city"
+                    else -> "Preview a sample"
+                },
+                color = MaterialTheme.colorScheme.onBackground,
             )
         }
 
         Button(
-            onClick = { setAsWallpaper() },
-            enabled = preview != null && !generating,
+            onClick = { generate(apply = true) },
+            enabled = !generating,
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = CwAccent,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
-                disabledContainerColor = CwSurface,
-                disabledContentColor = CwMuted,
             ),
         ) {
             if (generating) {
@@ -287,24 +284,18 @@ private fun CityWallScreen() {
                 Spacer(Modifier.width(12.dp))
                 Text("Working…", fontWeight = FontWeight.SemiBold)
             } else {
-                Text("Set as wallpaper", fontWeight = FontWeight.SemiBold)
+                Text("Generate & set wallpaper", fontWeight = FontWeight.SemiBold)
             }
         }
 
         if (hasBackup) {
-            OutlinedButton(
-                onClick = { restoreWallpaper() },
-                enabled = !generating,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                Text("Restore previous wallpaper", color = MaterialTheme.colorScheme.onBackground)
+            TextButton(onClick = { restoreWallpaper() }, enabled = !generating) {
+                Text("Restore previous wallpaper", color = CwMuted)
             }
         }
 
         statusMsg?.let { Text(it, color = CwMuted, fontSize = 13.sp) }
 
-        // Guided permissions — one step at a time.
         if (step != PermStep.DONE) {
             PermissionStepCard(
                 step = step,
@@ -325,14 +316,56 @@ private fun CityWallScreen() {
                         PermStep.DONE -> {}
                     }
                 },
+                onDismiss = when (step) {
+                    PermStep.BACKGROUND -> {
+                        { settings.dismissedBackgroundPrompt = true; dismissedBg = true }
+                    }
+                    PermStep.NOTIFICATIONS -> {
+                        { settings.dismissedNotificationsPrompt = true; dismissedNotif = true }
+                    }
+                    else -> null
+                },
             )
+        }
+
+        SectionLabel("WALLPAPER")
+        PickerRow("Apply to", TARGET_LABELS, TARGET_VALUES.indexOf(wallpaperTarget)) { i ->
+            wallpaperTarget = TARGET_VALUES[i]
+            settings.wallpaperTarget = wallpaperTarget
         }
 
         SectionLabel("LOOK")
         PickerRow("Palette", PALETTE_NAMES, PALETTE_NAMES.indexOf(paletteName)) { i ->
             paletteName = PALETTE_NAMES[i]
             settings.paletteName = paletteName
-            if (preview != null) generatePreview(useLocation = !previewIsSample) // re-preview in new palette
+            if (preview != null) generate(apply = false) // re-preview straight away
+        }
+
+        SectionLabel("LOCATION")
+        SwitchRow(
+            "Set location manually",
+            "Pick a city instead of GPS. Manual spots are preview-only — they can't claim a city.",
+            manualLocation != null,
+        ) { on ->
+            manualLocation = if (on) (manualLocation ?: sampleCapital(context).name) else null
+            settings.manualLocation = manualLocation
+            generate(apply = false)
+        }
+        val manualCity = manualLocation
+        if (manualCity != null) {
+            PickerRow("City", CAPITAL_NAMES, CAPITAL_NAMES.indexOf(manualCity)) { i ->
+                manualLocation = CAPITAL_NAMES[i]
+                settings.manualLocation = CAPITAL_NAMES[i]
+                generate(apply = false)
+            }
+        }
+        SwitchRow(
+            "Capital cities",
+            "When using GPS, map the country's capital instead of your town.",
+            useCapital,
+        ) { on ->
+            useCapital = on
+            settings.useCapital = on
         }
 
         SectionLabel("UPDATES")
@@ -347,31 +380,17 @@ private fun CityWallScreen() {
             if (on) WallpaperScheduler.enablePeriodic(context)
             else WallpaperScheduler.disablePeriodic(context)
         }
-        SwitchRow(
-            "Capital cities",
-            "Map the country's capital instead of your town.",
-            useCapital,
-        ) { on ->
-            useCapital = on
-            settings.useCapital = on
-        }
 
         SectionLabel("WORLD MAP")
         SwitchRow(
             "Join the world map",
-            "Off keeps everything on this device. On shares the cities you claim.",
+            "Opt in to claim cities. Off keeps everything on this device.",
             joinWorldMap,
         ) { on ->
             joinWorldMap = on
             settings.joinWorldMap = on
         }
-        if (joinWorldMap) {
-            Text(
-                "Claiming goes live with the CityWall online service.",
-                color = CwMuted,
-                fontSize = 12.sp,
-            )
-        }
+        WorldMapInfo(joinWorldMap)
 
         Spacer(Modifier.height(8.dp))
     }
@@ -408,7 +427,7 @@ private fun Header() {
 }
 
 @Composable
-private fun HeroPreview(preview: Bitmap?, cityName: String?, isSample: Boolean, generating: Boolean) {
+private fun HeroPreview(preview: Bitmap?, cityName: String?, source: Source, generating: Boolean) {
     Surface(
         color = MapSlate,
         shape = RoundedCornerShape(24.dp),
@@ -426,14 +445,19 @@ private fun HeroPreview(preview: Bitmap?, cityName: String?, isSample: Boolean, 
                 PlaceholderMap()
             }
 
-            if (isSample && preview != null) {
+            val badge = when (source) {
+                Source.SAMPLE -> "SAMPLE"
+                Source.MANUAL -> "MANUAL"
+                Source.GPS -> null
+            }
+            if (badge != null && preview != null) {
                 Surface(
                     color = Color(0xCC0E1116),
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
                 ) {
                     Text(
-                        "SAMPLE",
+                        badge,
                         style = MonoLabel,
                         color = CwAccent,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -452,7 +476,11 @@ private fun HeroPreview(preview: Bitmap?, cityName: String?, isSample: Boolean, 
                     Column {
                         Text(cityName, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                         Text(
-                            if (isSample) "a sample — preview your own next" else "cached on this device",
+                            when (source) {
+                                Source.SAMPLE -> "a sample — preview your own next"
+                                Source.MANUAL -> "manual location · can't claim"
+                                Source.GPS -> "cached on this device"
+                            },
                             color = CwMuted,
                             fontSize = 12.sp,
                         )
@@ -471,19 +499,43 @@ private fun HeroPreview(preview: Bitmap?, cityName: String?, isSample: Boolean, 
 private fun PlaceholderMap() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            val faint = Color(0xFF333B49)
+            val faint = Color(0xFF161D26)
             val w = size.width
             val h = size.height
             for (k in 1..5) drawLine(faint, Offset(0f, h * k / 6f), Offset(w, h * k / 6f), 1.5f)
             for (k in 1..3) drawLine(faint, Offset(w * k / 4f, 0f), Offset(w * k / 4f, h), 1.5f)
-            drawLine(CwAccent, Offset(0f, h * 0.5f), Offset(w, h * 0.5f), 4f, StrokeCap.Round)
+            drawLine(Color(0xFF00040B), Offset(0f, h * 0.5f), Offset(w, h * 0.5f), 4f, StrokeCap.Round)
         }
         Text("Generating a preview…", color = CwMuted, fontSize = 14.sp)
     }
 }
 
 @Composable
-private fun PermissionStepCard(step: PermStep, onAction: () -> Unit) {
+private fun WorldMapInfo(joined: Boolean) {
+    Surface(color = CwSurface, shape = RoundedCornerShape(14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("What's shared", style = MonoLabel, color = CwMuted)
+            Text(
+                "• The names of cities you claim, and a public handle you choose — shown on a shared world map.\n" +
+                    "• Being first to a city makes you its “Pathfinder”.",
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 13.sp,
+            )
+            Text(
+                "Never shared: your live location, your home, or anything at all while this is off. " +
+                    "Manual-location previews can't claim cities. You can leave any time.",
+                color = CwMuted,
+                fontSize = 12.sp,
+            )
+            if (joined) {
+                Text("Claiming goes live with the CityWall online service.", color = CwAccent, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionStepCard(step: PermStep, onAction: () -> Unit, onDismiss: (() -> Unit)?) {
     val (title, body, cta) = when (step) {
         PermStep.LOCATION -> Triple(
             "Step 1 — Location",
@@ -492,12 +544,13 @@ private fun PermissionStepCard(step: PermStep, onAction: () -> Unit) {
         )
         PermStep.BACKGROUND -> Triple(
             "Step 2 — Background location",
-            "So the wallpaper can update as you travel, choose “Allow all the time” on the next screen.",
+            "So the wallpaper can update as you travel: open Settings → Permissions → Location → " +
+                "“Allow all the time”. (That's the location permission, not the battery setting.)",
             "Open settings",
         )
         PermStep.NOTIFICATIONS -> Triple(
             "Step 3 — Notifications (optional)",
-            "Let CityWall tell you when it sets a new wallpaper. You can skip this.",
+            "Let CityWall tell you when it sets a new wallpaper.",
             "Allow notifications",
         )
         PermStep.DONE -> Triple("", "", "")
@@ -509,15 +562,21 @@ private fun PermissionStepCard(step: PermStep, onAction: () -> Unit) {
         ) {
             Text(title, style = MonoLabel, color = CwAccent)
             Text(body, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp)
-            Button(
-                onClick = onAction,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CwAccent,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            ) {
-                Text(cta)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Button(
+                    onClick = onAction,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CwAccent,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                ) {
+                    Text(cta)
+                }
+                if (onDismiss != null) {
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = onDismiss) { Text("Not now", color = CwMuted) }
+                }
             }
         }
     }

@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -26,6 +27,10 @@ class MapWallpaperGenerator(
     private val overpassUrl: String = "https://overpass-api.de/api/interpreter",
     private val halfHeightMetres: Double = 2200.0,
     private val palette: Palette = Palette.DEFAULT,
+    // When set, the raw Overpass geometry is cached per city here. Re-rendering the
+    // same city in a different palette then skips the network — the look changes
+    // straight away. Geometry is palette-independent, so it's keyed by city only.
+    private val geometryCacheDir: File? = null,
 ) : WallpaperGenerator {
 
     // Cache entries are namespaced by palette so switching theme regenerates once.
@@ -75,11 +80,36 @@ class MapWallpaperGenerator(
         val west = lon - lonHalf
         val east = lon + lonHalf
 
-        // 2. Fetch highways from Overpass.
-        val json = fetchOverpass(south, west, north, east)
+        // 2. Fetch highways from Overpass (or reuse cached geometry).
+        val json = loadOrFetchGeometry(cityName, south, west, north, east)
 
         // 3 + 4. Parse and render.
         return render(json, widthPx, heightPx, south, north, west, east)
+    }
+
+    private fun citySlug(name: String): String =
+        name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+
+    private fun loadOrFetchGeometry(
+        cityName: String, south: Double, west: Double, north: Double, east: Double,
+    ): String {
+        val cacheFile = geometryCacheDir
+            ?.let { File(it.apply { mkdirs() }, "${citySlug(cityName)}.json") }
+        if (cacheFile != null && cacheFile.exists()) {
+            try {
+                return cacheFile.readText()
+            } catch (_: Exception) {
+                // fall through to a fresh fetch
+            }
+        }
+        val json = fetchOverpass(south, west, north, east)
+        if (cacheFile != null) {
+            try {
+                cacheFile.writeText(json)
+            } catch (_: Exception) {
+            }
+        }
+        return json
     }
 
     private fun fetchOverpass(south: Double, west: Double, north: Double, east: Double): String {
@@ -172,6 +202,16 @@ class MapWallpaperGenerator(
      */
     class Palette(val name: String, val background: Int, val roadColours: IntArray) {
         companion object {
+            // Inverted polarity: light slate-teal blocks with dark roads carved into
+            // them, ramping from subtle minor streets to near-black major arterials.
+            // Matched from the "Pathfinder" reference. This is the standard scheme.
+            val PATHFINDER = Palette(
+                "Pathfinder", 0xFF252E37.toInt(),
+                intArrayOf(
+                    0xFF0D141D.toInt(), 0xFF0A111A.toInt(), 0xFF070E16.toInt(),
+                    0xFF050A12.toInt(), 0xFF03080F.toInt(), 0xFF00040B.toInt(),
+                ),
+            )
             val MIDNIGHT_SLATE = Palette(
                 "Midnight Slate", 0xFF1A1E27.toInt(),
                 intArrayOf(
@@ -208,8 +248,8 @@ class MapWallpaperGenerator(
                 ),
             )
 
-            val DEFAULT = MIDNIGHT_SLATE
-            val ALL = listOf(MIDNIGHT_SLATE, CARBON, BLUEPRINT, AMBER, FOREST)
+            val DEFAULT = PATHFINDER
+            val ALL = listOf(PATHFINDER, MIDNIGHT_SLATE, CARBON, BLUEPRINT, AMBER, FOREST)
             fun byName(name: String): Palette = ALL.firstOrNull { it.name == name } ?: DEFAULT
         }
     }
