@@ -10,9 +10,11 @@ Heading toward the Play Store; current builds are debug-signed for sideloading.
 
 **[⬇ Download the latest APK](https://github.com/dannymcc/citywall/releases/latest/download/citywall-debug.apk)** — debug-signed, sideloadable on Android 8.0+.
 
-Every tagged release attaches a fresh APK; browse them on the
-[Releases page](https://github.com/dannymcc/citywall/releases). On the device, enable
-"install unknown apps" for your browser, open the APK, and install.
+> This repo is **private**, so the link only resolves when you're signed in to GitHub
+> with access to it (it 404s for anyone else). Every tagged release attaches a fresh
+> APK — browse them on the [Releases page](https://github.com/dannymcc/citywall/releases).
+
+On the device, enable "install unknown apps" for your browser, open the APK, and install.
 
 ## The look
 
