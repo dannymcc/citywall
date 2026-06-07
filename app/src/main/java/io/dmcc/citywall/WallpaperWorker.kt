@@ -27,9 +27,13 @@ class WallpaperWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
             val (w, h) = screenSize(applicationContext)
             val local = MapWallpaperGenerator(
                 palette = settings.palette,
+                halfHeightMetres = settings.zoomMetres.toDouble(),
                 geometryCacheDir = File(applicationContext.filesDir, "geometry"),
             )
-            val generator = RemoteWallpaperGenerator(settings.palette, local, settings.embassyCountry)
+            val generator = RemoteWallpaperGenerator(
+                settings.palette, local, settings.embassyCountry,
+                settings.zoomMetres, settings.riverStyle,
+            )
             val bmp = WallpaperRepository(applicationContext, generator)
                 .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
             WallpaperBackup.backupOnce(applicationContext) // preserve the original first

@@ -45,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -77,6 +78,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
@@ -92,6 +94,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
 import java.time.Year
 import java.util.TimeZone
 
@@ -103,6 +106,8 @@ private val FREQ_VALUES = listOf(15L, 30L, 60L, 180L, 360L, 720L, 1440L)
 private val PALETTE_NAMES = MapWallpaperGenerator.Palette.ALL.map { it.name }
 private val TARGET_LABELS = listOf("Home & lock", "Home screen", "Lock screen")
 private val TARGET_VALUES = listOf(Settings.TARGET_BOTH, Settings.TARGET_HOME, Settings.TARGET_LOCK)
+private val RIVER_LABELS = listOf("Subtle", "Bold", "Off")
+private val RIVER_VALUES = listOf("subtle", "bold", "off")
 private val TAB_LABELS = listOf("Wallpaper", "Pathfinder", "Settings", "About")
 // Country options for the embassy overlay: "" (none) + ISO codes sorted by name.
 private val EMBASSY_CODES: List<String> =
@@ -139,6 +144,8 @@ private fun CityWallScreen() {
     var joinWorldMap by remember { mutableStateOf(settings.joinWorldMap) }
     var wallpaperTarget by remember { mutableStateOf(settings.wallpaperTarget) }
     var embassyCountry by remember { mutableStateOf(settings.embassyCountry) }
+    var zoomMetres by remember { mutableStateOf(settings.zoomMetres) }
+    var riverStyle by remember { mutableStateOf(settings.riverStyle) }
     var manualName by remember { mutableStateOf(settings.manualLocation) }
     var manualQuery by remember { mutableStateOf("") }
     var dismissedBg by remember { mutableStateOf(settings.dismissedBackgroundPrompt) }
@@ -212,9 +219,13 @@ private fun CityWallScreen() {
                     val (w, h) = WallpaperWorker.screenSize(context)
                     val local = MapWallpaperGenerator(
                         palette = settings.palette,
+                        halfHeightMetres = settings.zoomMetres.toDouble(),
                         geometryCacheDir = File(context.filesDir, "geometry"),
                     )
-                    val generator = RemoteWallpaperGenerator(settings.palette, local, settings.embassyCountry)
+                    val generator = RemoteWallpaperGenerator(
+                        settings.palette, local, settings.embassyCountry,
+                        settings.zoomMetres, settings.riverStyle,
+                    )
                     val bmp = WallpaperRepository(context, generator)
                         .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
                     var claim: String? = null
@@ -395,6 +406,11 @@ private fun CityWallScreen() {
                         Text("Restore previous wallpaper", color = CwMuted)
                     }
                 }
+                preview?.let { bmp ->
+                    TextButton(onClick = { shareWallpaper(context, bmp) }, enabled = !generating) {
+                        Text("Share this map", color = CwAccent)
+                    }
+                }
                 statusMsg?.let { Text(it, color = CwMuted, fontSize = 13.sp) }
                 if (step != PermStep.DONE) {
                     PermissionStepCard(
@@ -438,6 +454,22 @@ private fun CityWallScreen() {
                     settings.paletteName = paletteName
                     if (preview != null) generate(apply = false)
                 }
+                PickerRow("Rivers", RIVER_LABELS, RIVER_VALUES.indexOf(riverStyle).coerceAtLeast(0)) { i ->
+                    riverStyle = RIVER_VALUES[i]
+                    settings.riverStyle = riverStyle
+                    if (preview != null) generate(apply = false)
+                }
+                SectionLabel("ZOOM")
+                Text("$zoomMetres m view — smaller is closer", color = CwMuted, fontSize = 12.sp)
+                Slider(
+                    value = zoomMetres.toFloat(),
+                    onValueChange = { zoomMetres = it.toInt() },
+                    valueRange = 1200f..4500f,
+                    onValueChangeFinished = {
+                        settings.zoomMetres = zoomMetres
+                        if (preview != null) generate(apply = false)
+                    },
+                )
             }
 
             1 -> TabColumn(inner) {
@@ -1017,6 +1049,23 @@ private fun openAppSettings(context: Context) {
             if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         },
     )
+}
+
+private fun shareWallpaper(context: Context, bitmap: Bitmap) {
+    try {
+        val file = File(context.externalCacheDir, "citywall-share.png")
+        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(
+            Intent.createChooser(send, "Share map").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    } catch (_: Exception) {
+    }
 }
 
 private fun openUrl(context: Context, url: String) {

@@ -19,17 +19,22 @@ class RemoteWallpaperGenerator(
     private val palette: MapWallpaperGenerator.Palette,
     private val fallback: WallpaperGenerator,
     private val embassyCountry: String? = null,
+    private val zoomMetres: Int = 2200,
+    private val riverStyle: String = "subtle",
     private val serverUrl: String = PathfinderApi.SERVER_URL,
 ) : WallpaperGenerator {
 
     override val variantKey: String =
         palette.name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-') +
+            "-z$zoomMetres" +
+            (if (riverStyle != "subtle") "-r$riverStyle" else "") +
             (embassyCountry?.takeIf { it.isNotBlank() }?.let { "-emb-${it.lowercase()}" } ?: "")
 
     override fun generate(cityName: String, lat: Double, lon: Double, widthPx: Int, heightPx: Int): Bitmap {
         try {
             val emb = embassyCountry?.takeIf { it.isNotBlank() }?.let { "&embassy=${enc(it)}" } ?: ""
-            val q = "name=${enc(cityName)}&lat=$lat&lon=$lon&palette=${enc(palette.name)}&w=$widthPx&h=$heightPx$emb"
+            val q = "name=${enc(cityName)}&lat=$lat&lon=$lon&palette=${enc(palette.name)}" +
+                "&w=$widthPx&h=$heightPx&zoom=$zoomMetres&river=${enc(riverStyle)}$emb"
             val conn = (URL("$serverUrl/wallpaper?$q").openConnection() as HttpURLConnection).apply {
                 connectTimeout = 20_000
                 readTimeout = 90_000

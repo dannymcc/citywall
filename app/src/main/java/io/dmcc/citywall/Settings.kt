@@ -31,6 +31,16 @@ class Settings(ctx: Context) {
         get() = prefs.getString(KEY_EMBASSY, null)
         set(v) = prefs.edit().putString(KEY_EMBASSY, v).apply()
 
+    /** Zoom: half the view height in metres (smaller = closer). */
+    var zoomMetres: Int
+        get() = prefs.getInt(KEY_ZOOM, 2200)
+        set(v) = prefs.edit().putInt(KEY_ZOOM, v).apply()
+
+    /** How rivers/water are drawn: "off", "subtle" (default), or "bold". */
+    var riverStyle: String
+        get() = prefs.getString(KEY_RIVER, "subtle")!!
+        set(v) = prefs.edit().putString(KEY_RIVER, v).apply()
+
     /** Whether the hourly background worker is enabled. */
     var autoUpdate: Boolean
         get() = prefs.getBoolean(KEY_AUTO, false)
@@ -112,6 +122,8 @@ class Settings(ctx: Context) {
         private const val KEY_AUTO = "auto_update"
         private const val KEY_WORLD_MAP = "join_world_map"
         private const val KEY_EMBASSY = "embassy_country"
+        private const val KEY_ZOOM = "zoom_metres"
+        private const val KEY_RIVER = "river_style"
         private const val KEY_MANUAL = "manual_location"
         private const val KEY_MANUAL_LAT = "manual_lat"
         private const val KEY_MANUAL_LON = "manual_lon"

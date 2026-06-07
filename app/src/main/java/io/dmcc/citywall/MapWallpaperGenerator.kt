@@ -253,8 +253,17 @@ class MapWallpaperGenerator(
                 ),
             )
 
+            // Light scheme: dark roads on warm paper (mirrors the server's Daylight).
+            val DAYLIGHT = Palette(
+                "Daylight", 0xFFECEAE3.toInt(),
+                intArrayOf(
+                    0xFFCBC7BD.toInt(), 0xFFD0CCC2.toInt(), 0xFFB0AB9F.toInt(),
+                    0xFF918C80.toInt(), 0xFF6F6A60.toInt(), 0xFF4E4940.toInt(),
+                ),
+            )
+
             val DEFAULT = CITYWALL
-            val ALL = listOf(CITYWALL, MIDNIGHT_SLATE, CARBON, BLUEPRINT, AMBER, FOREST)
+            val ALL = listOf(CITYWALL, DAYLIGHT, MIDNIGHT_SLATE, CARBON, BLUEPRINT, AMBER, FOREST)
             fun byName(name: String): Palette = ALL.firstOrNull { it.name == name } ?: DEFAULT
         }
     }
