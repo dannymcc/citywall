@@ -6,12 +6,38 @@ street-map** of that place. Each city is generated once and cached forever.
 
 Release-signed APKs via GitHub Releases and a self-hosted F-Droid repo.
 
-## Download
+## Install
 
-**[⬇ Latest APK](https://github.com/dannymcc/citywall/releases/latest/download/citywall.apk)** — release-signed, Android 8.0+. Enable "install unknown apps" for your browser, open the APK, and install.
+Android 8.0+ (`minSdk 26`). Not on Google Play.
 
-Or add the **F-Droid repo** for auto-updates: `https://citywall.dmcc.io/fdroid/repo`
-(fingerprint `7478B6A7A77BE7BA332EBF98955255A47814C6986F447CC426834EAFC7DAF4D1`).
+### F-Droid (recommended — automatic updates)
+
+Add the self-hosted repository, then install CityWall from it:
+
+1. In the **F-Droid** app: **Settings → Repositories → ➕**.
+2. Paste this URL (the fingerprint pins the repo's signing key):
+
+   ```
+   https://citywall.dmcc.io/fdroid/repo?fingerprint=7478B6A7A77BE7BA332EBF98955255A47814C6986F447CC426834EAFC7DAF4D1
+   ```
+
+3. Search for **CityWall** and install. Updates then arrive through F-Droid.
+
+> The official **f-droid.org** listing is in progress — see
+> [`docs/fdroid-official.md`](docs/fdroid-official.md).
+
+### Direct APK from GitHub
+
+1. Download **[citywall.apk](https://github.com/dannymcc/citywall/releases/latest/download/citywall.apk)**
+   (or choose a version on the [Releases page](https://github.com/dannymcc/citywall/releases)).
+2. When prompted, allow "install unknown apps" for your browser or files app.
+3. Open the APK to install. It can then update itself via **About → Check for updates**.
+
+## Issues & feedback
+
+Bugs and ideas are welcome — open an issue:
+**<https://github.com/dannymcc/citywall/issues>**. For visual problems, include your
+Android version and a screenshot.
 
 ## The look
 
