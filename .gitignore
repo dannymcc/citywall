@@ -9,3 +9,6 @@
 .cxx
 /app/build/
 local.properties
+
+# Signing key — provided via CI secret, never committed
+*.keystore

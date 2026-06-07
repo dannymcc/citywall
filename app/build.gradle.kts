@@ -21,32 +21,33 @@ android {
         versionName = System.getenv("CITYWALL_VERSION_NAME") ?: "1.0"
     }
 
-    // Committed, non-secret debug-grade key. The point is a STABLE signature across
-    // builds — without it, each CI run mints a fresh debug key and APKs refuse to
-    // install over one another. A proper release key / Play App Signing comes later.
+    // Release signing key + password come from CI secrets (decoded to citywall.keystore
+    // at build time), never from the repo. If absent (e.g. a local build without the
+    // key), release falls back to the default debug signing so the build still works.
+    val keystoreFile = file("citywall.keystore")
+    val keystorePassword: String? = System.getenv("CITYWALL_KEYSTORE_PASSWORD")
+    val hasReleaseKey = keystoreFile.exists() && keystoreFile.length() > 0L && !keystorePassword.isNullOrEmpty()
+
     signingConfigs {
-        getByName("debug") {
-            storeFile = file("citywall.keystore")
-            storePassword = "citywall"
-            keyAlias = "citywall"
-            keyPassword = "citywall"
-            storeType = "PKCS12"
-        }
-        create("release") {
-            storeFile = file("citywall.keystore")
-            storePassword = "citywall"
-            keyAlias = "citywall"
-            keyPassword = "citywall"
-            storeType = "PKCS12"
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = keystoreFile
+                storePassword = keystorePassword
+                keyAlias = "citywall"
+                keyPassword = keystorePassword
+                storeType = "PKCS12"
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Same key as debug, so a release APK installs as an update over the
-            // earlier debug builds (v0.1.1+) with no uninstall.
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
