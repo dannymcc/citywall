@@ -215,7 +215,7 @@ private fun CityWallScreen() {
     fun generate() {
         generating = true
         statusMsg = null
-        busyMessage = "Finding your location…"
+        busyMessage = "Working out where on earth you are…"
         scope.launch {
             // Stage 1: work out which place to map.
             val pair: Pair<CityFix?, Source>? = withContext(Dispatchers.IO) {
@@ -247,7 +247,7 @@ private fun CityWallScreen() {
                 return@launch
             }
             // Stage 2: build the map for that place.
-            busyMessage = "Drawing ${fix.name}…"
+            busyMessage = "Tracing every street in ${fix.name}…"
             val bmp = withContext(Dispatchers.IO) {
                 try {
                     val (w, h) = WallpaperWorker.screenSize(context)
@@ -274,7 +274,8 @@ private fun CityWallScreen() {
             previewCity = fix.name
             previewSource = pair.second
             previewFix = fix
-            if (pair.second != Source.SAMPLE) {
+            // Only real GPS visits count as "your cities" — manual/sample don't.
+            if (pair.second == Source.GPS) {
                 settings.recordCity(fix.name)
                 visited = settings.visitedCities()
             }
@@ -288,7 +289,7 @@ private fun CityWallScreen() {
         val source = previewSource
         generating = true
         statusMsg = null
-        busyMessage = "Setting wallpaper…"
+        busyMessage = "Hanging your new wallpaper…"
         scope.launch {
             val claim = withContext(Dispatchers.IO) {
                 WallpaperBackup.backupOnce(context)
@@ -315,7 +316,7 @@ private fun CityWallScreen() {
     fun restoreWallpaper() {
         generating = true
         statusMsg = null
-        busyMessage = "Restoring…"
+        busyMessage = "Fetching your old wallpaper back…"
         scope.launch {
             val ok = withContext(Dispatchers.IO) { WallpaperBackup.restore(context) }
             generating = false
@@ -327,7 +328,7 @@ private fun CityWallScreen() {
         if (query.isBlank()) return
         generating = true
         statusMsg = null
-        busyMessage = "Finding that place…"
+        busyMessage = "Hunting down that place…"
         scope.launch {
             val coords = withContext(Dispatchers.IO) { CityResolver(context).coordsFor(query) }
             generating = false
@@ -474,7 +475,7 @@ private fun CityWallScreen() {
                         Text("Share this CityWall", color = CwAccent)
                     }
                 }
-                (if (generating) busyMessage else statusMsg)?.let { Text(it, color = CwMuted, fontSize = 13.sp) }
+                if (!generating) statusMsg?.let { Text(it, color = CwMuted, fontSize = 13.sp) }
                 if (step != PermStep.DONE) {
                     PermissionStepCard(
                         step = step,
@@ -593,7 +594,7 @@ private fun CityWallScreen() {
                 }
                 SectionLabel("YOUR CITIES")
                 if (visited.isEmpty()) {
-                    Text("Cities you set as wallpaper appear here.", color = CwMuted, fontSize = 12.sp)
+                    Text("Cities you've actually visited appear here.", color = CwMuted, fontSize = 12.sp)
                 } else {
                     Text("${visited.size} cities", color = CwMuted, fontSize = 12.sp)
                     visited.forEach { c ->

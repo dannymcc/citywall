@@ -49,7 +49,7 @@ class WallpaperWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
             WallpaperBackup.backupOnce(applicationContext) // preserve the original first
             applyWallpaper(applicationContext, bmp, settings.wallpaperFlags())
             settings.lastSetCity = fix.name
-            settings.recordCity(fix.name)
+            if (settings.manualFix() == null) settings.recordCity(fix.name) // GPS visits only
             // Claim the city on the Pathfinder leaderboard if opted in and this was a
             // real GPS fix (manual locations are ineligible).
             if (settings.joinWorldMap && settings.manualFix() == null) {

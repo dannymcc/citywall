@@ -150,7 +150,8 @@ class Settings(ctx: Context) {
         private const val KEY_ONBOARDED = "onboarded"
         private const val KEY_TRAVEL_ONLY = "travel_only"
         private const val KEY_LAST_CITY = "last_set_city"
-        private const val KEY_VISITED = "visited_cities"
+        // v2: reset — earlier builds recorded manual locations here by mistake.
+        private const val KEY_VISITED = "visited_cities_v2"
         private const val KEY_MANUAL = "manual_location"
         private const val KEY_MANUAL_LAT = "manual_lat"
         private const val KEY_MANUAL_LON = "manual_lon"
