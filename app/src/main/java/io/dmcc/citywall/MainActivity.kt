@@ -94,7 +94,6 @@ import io.dmcc.citywall.ui.CwSurface
 import io.dmcc.citywall.ui.MapSlate
 import io.dmcc.citywall.ui.MonoLabel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -113,13 +112,6 @@ private val TARGET_VALUES = listOf(Settings.TARGET_BOTH, Settings.TARGET_HOME, S
 private val RIVER_LABELS = listOf("Subtle", "Bold", "Off")
 private val RIVER_VALUES = listOf("subtle", "bold", "off")
 private val TAB_LABELS = listOf("Wallpaper", "Pathfinder", "Settings", "About")
-private val BUSY_MESSAGES = listOf(
-    "Finding your location…",
-    "Querying OpenStreetMap…",
-    "Drawing the roads…",
-    "Adding rivers…",
-    "Almost there…",
-)
 // Country options for the embassy overlay: "" (none) + ISO codes sorted by name.
 private val EMBASSY_CODES: List<String> =
     listOf("") + java.util.Locale.getISOCountries().sortedBy { java.util.Locale("", it).displayCountry }
@@ -177,7 +169,7 @@ private fun CityWallScreen() {
     var leaderboardLoading by remember { mutableStateOf(false) }
     var updateMsg by remember { mutableStateOf<String?>(null) }
     var updating by remember { mutableStateOf(false) }
-    var busyMessage by remember { mutableStateOf(BUSY_MESSAGES[0]) }
+    var busyMessage by remember { mutableStateOf("Working…") }
     var updateAvailable by remember { mutableStateOf(false) }
 
     var permRefresh by remember { mutableStateOf(0) }
@@ -219,14 +211,17 @@ private fun CityWallScreen() {
     ) { permRefresh++ }
 
     // Generate (preview) only — produces the bitmap, doesn't touch the wallpaper.
+    // Stages are reported in order via busyMessage as they actually happen.
     fun generate() {
         generating = true
         statusMsg = null
+        busyMessage = "Finding your location…"
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
+            // Stage 1: work out which place to map.
+            val pair: Pair<CityFix?, Source>? = withContext(Dispatchers.IO) {
                 try {
                     val manual = settings.manualFix()
-                    val pair: Pair<CityFix?, Source> = when {
+                    when {
                         manual != null -> manual to Source.MANUAL
                         hasCoarse -> {
                             val resolver = CityResolver(context)
@@ -241,8 +236,20 @@ private fun CityWallScreen() {
                         else -> sampleCapital(context)
                             .let { CityFix(it.name, it.lat, it.lon) } to Source.SAMPLE
                     }
-                    val fix = pair.first
-                        ?: return@withContext Result.failure(IllegalStateException("no-location"))
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            val fix = pair?.first
+            if (fix == null) {
+                generating = false
+                statusMsg = "Couldn't get a location — set one manually in Settings or allow access."
+                return@launch
+            }
+            // Stage 2: build the map for that place.
+            busyMessage = "Drawing ${fix.name}…"
+            val bmp = withContext(Dispatchers.IO) {
+                try {
                     val (w, h) = WallpaperWorker.screenSize(context)
                     val local = MapWallpaperGenerator(
                         palette = settings.palette,
@@ -253,29 +260,23 @@ private fun CityWallScreen() {
                         settings.palette, local, settings.embassyCountry,
                         settings.zoomMetres, settings.riverStyle,
                     )
-                    val bmp = WallpaperRepository(context, generator)
-                        .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
-                    Result.success(GenOutcome(fix.name, bmp, pair.second, fix.lat, fix.lon))
+                    WallpaperRepository(context, generator).getOrCreate(fix.name, fix.lat, fix.lon, w, h)
                 } catch (e: Exception) {
-                    Result.failure(e)
+                    null
                 }
             }
             generating = false
-            outcome.onSuccess { o ->
-                preview = o.bmp
-                previewCity = o.name
-                previewSource = o.source
-                previewFix = CityFix(o.name, o.lat, o.lon)
-                if (o.source != Source.SAMPLE) {
-                    settings.recordCity(o.name)
-                    visited = settings.visitedCities()
-                }
-            }.onFailure {
-                statusMsg = if (it.message == "no-location") {
-                    "Couldn't get a location — set one manually in Settings or allow access."
-                } else {
-                    "Couldn't generate the map: ${it.message}"
-                }
+            if (bmp == null) {
+                statusMsg = "Couldn't generate the map — try again."
+                return@launch
+            }
+            preview = bmp
+            previewCity = fix.name
+            previewSource = pair.second
+            previewFix = fix
+            if (pair.second != Source.SAMPLE) {
+                settings.recordCity(fix.name)
+                visited = settings.visitedCities()
             }
         }
     }
@@ -287,6 +288,7 @@ private fun CityWallScreen() {
         val source = previewSource
         generating = true
         statusMsg = null
+        busyMessage = "Setting wallpaper…"
         scope.launch {
             val claim = withContext(Dispatchers.IO) {
                 WallpaperBackup.backupOnce(context)
@@ -313,6 +315,7 @@ private fun CityWallScreen() {
     fun restoreWallpaper() {
         generating = true
         statusMsg = null
+        busyMessage = "Restoring…"
         scope.launch {
             val ok = withContext(Dispatchers.IO) { WallpaperBackup.restore(context) }
             generating = false
@@ -324,6 +327,7 @@ private fun CityWallScreen() {
         if (query.isBlank()) return
         generating = true
         statusMsg = null
+        busyMessage = "Finding that place…"
         scope.launch {
             val coords = withContext(Dispatchers.IO) { CityResolver(context).coordsFor(query) }
             generating = false
@@ -381,16 +385,6 @@ private fun CityWallScreen() {
     }
     LaunchedEffect(joinWorldMap, selectedTab) {
         if (joinWorldMap && selectedTab == 1) refreshLeaderboard()
-    }
-    // Rotate progress messages while generating.
-    LaunchedEffect(generating) {
-        if (!generating) return@LaunchedEffect
-        var i = 0
-        while (true) {
-            busyMessage = BUSY_MESSAGES[i % BUSY_MESSAGES.size]
-            i++
-            delay(1100)
-        }
     }
     // Check once for an update so the About tab can show a badge.
     LaunchedEffect(Unit) {
@@ -1208,6 +1202,7 @@ private fun shareWallpaper(context: Context, bitmap: Bitmap) {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_TEXT, "I created this CityWall wallpaper for my phone — check it out!")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(
