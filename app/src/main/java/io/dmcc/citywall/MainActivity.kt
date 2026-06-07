@@ -25,6 +25,9 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -146,6 +149,9 @@ private fun CityWallScreen() {
     var embassyCountry by remember { mutableStateOf(settings.embassyCountry) }
     var zoomMetres by remember { mutableStateOf(settings.zoomMetres) }
     var riverStyle by remember { mutableStateOf(settings.riverStyle) }
+    var onboarded by remember { mutableStateOf(settings.onboarded) }
+    var travelOnly by remember { mutableStateOf(settings.travelOnly) }
+    var visited by remember { mutableStateOf(settings.visitedCities()) }
     var manualName by remember { mutableStateOf(settings.manualLocation) }
     var manualQuery by remember { mutableStateOf("") }
     var dismissedBg by remember { mutableStateOf(settings.dismissedBackgroundPrompt) }
@@ -246,7 +252,12 @@ private fun CityWallScreen() {
                 preview = o.bmp
                 previewCity = o.name
                 previewSource = o.source
+                if (o.source != Source.SAMPLE) {
+                    settings.recordCity(o.name)
+                    visited = settings.visitedCities()
+                }
                 if (apply) {
+                    settings.lastSetCity = o.name
                     hasBackup = WallpaperBackup.available(context)
                     statusMsg = when (o.claim) {
                         "claimed" -> "Wallpaper set — you're the Pathfinder of ${o.name}!"
@@ -336,6 +347,11 @@ private fun CityWallScreen() {
     }
     LaunchedEffect(joinWorldMap, selectedTab) {
         if (joinWorldMap && selectedTab == 1) refreshLeaderboard()
+    }
+
+    if (!onboarded) {
+        Onboarding(onStart = { settings.onboarded = true; onboarded = true })
+        return
     }
 
     Scaffold(
@@ -514,6 +530,21 @@ private fun CityWallScreen() {
                         fontSize = 12.sp,
                     )
                 }
+                SectionLabel("YOUR CITIES")
+                if (visited.isEmpty()) {
+                    Text("Cities you set as wallpaper appear here.", color = CwMuted, fontSize = 12.sp)
+                } else {
+                    Text("${visited.size} cities", color = CwMuted, fontSize = 12.sp)
+                    visited.forEach { c ->
+                        Surface(color = CwSurface, shape = RoundedCornerShape(12.dp)) {
+                            Text(
+                                c,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                            )
+                        }
+                    }
+                }
             }
 
             2 -> TabColumn(inner) {
@@ -591,6 +622,14 @@ private fun CityWallScreen() {
                     settings.autoUpdate = on
                     if (on) WallpaperScheduler.enablePeriodic(context)
                     else WallpaperScheduler.disablePeriodic(context)
+                }
+                SwitchRow(
+                    "Update only when I travel",
+                    "Only change the wallpaper when you reach a new city.",
+                    travelOnly,
+                ) { on ->
+                    travelOnly = on
+                    settings.travelOnly = on
                 }
             }
 
@@ -712,6 +751,45 @@ private fun TabIcon(index: Int, active: Boolean) {
                 drawLine(c, Offset(s / 2, s * 0.46f), Offset(s / 2, s * 0.66f), s * 0.08f, StrokeCap.Round)
             }
         }
+    }
+}
+
+@Composable
+private fun Onboarding(onStart: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .padding(horizontal = 28.dp, vertical = 24.dp),
+    ) {
+        Spacer(Modifier.height(40.dp))
+        Text("CityWall", color = MaterialTheme.colorScheme.onBackground, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Text("Your city, drawn in roads.", color = CwMuted, fontSize = 15.sp)
+        Spacer(Modifier.height(28.dp))
+        OnboardLine("A dark street-map of wherever you are, set as your wallpaper.")
+        OnboardLine("Updates as you travel — a new city, a new map.")
+        OnboardLine("Tune the palette, zoom and rivers; mark a country's embassies.")
+        OnboardLine("Be first to a city and claim it on the Pathfinder leaderboard.")
+        OnboardLine("Coarse location only. Nothing leaves your device unless you opt in.")
+        Spacer(Modifier.weight(1f))
+        Button(
+            onClick = onStart,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = CwAccent, contentColor = MaterialTheme.colorScheme.onPrimary),
+        ) {
+            Text("Get started", fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun OnboardLine(text: String) {
+    Row(modifier = Modifier.padding(vertical = 8.dp)) {
+        Text("•  ", color = CwAccent, fontSize = 15.sp)
+        Text(text, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp)
     }
 }
 

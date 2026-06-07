@@ -24,6 +24,10 @@ class WallpaperWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
             val fix = settings.manualFix()
                 ?: CityResolver(applicationContext).currentCity(settings.useCapital)
                 ?: return Result.retry()
+            // Travel-only: skip when we're still in the same city as last time.
+            if (settings.travelOnly && fix.name == settings.lastSetCity) {
+                return Result.success()
+            }
             val (w, h) = screenSize(applicationContext)
             val local = MapWallpaperGenerator(
                 palette = settings.palette,
@@ -38,6 +42,8 @@ class WallpaperWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
                 .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
             WallpaperBackup.backupOnce(applicationContext) // preserve the original first
             applyWallpaper(applicationContext, bmp, settings.wallpaperFlags())
+            settings.lastSetCity = fix.name
+            settings.recordCity(fix.name)
             // Claim the city on the Pathfinder leaderboard if opted in and this was a
             // real GPS fix (manual locations are ineligible).
             if (settings.joinWorldMap && settings.manualFix() == null) {

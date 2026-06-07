@@ -103,6 +103,29 @@ class Settings(ctx: Context) {
             return id
         }
 
+    /** Whether the first-launch onboarding has been completed. */
+    var onboarded: Boolean
+        get() = prefs.getBoolean(KEY_ONBOARDED, false)
+        set(v) = prefs.edit().putBoolean(KEY_ONBOARDED, v).apply()
+
+    /** Background updates only change the wallpaper when the city changes ("travel"). */
+    var travelOnly: Boolean
+        get() = prefs.getBoolean(KEY_TRAVEL_ONLY, true)
+        set(v) = prefs.edit().putBoolean(KEY_TRAVEL_ONLY, v).apply()
+
+    /** The last city the background worker set (for travel-only updates). */
+    var lastSetCity: String?
+        get() = prefs.getString(KEY_LAST_CITY, null)
+        set(v) = prefs.edit().putString(KEY_LAST_CITY, v).apply()
+
+    fun recordCity(name: String) {
+        val s = prefs.getStringSet(KEY_VISITED, emptySet())!!.toMutableSet()
+        if (s.add(name)) prefs.edit().putStringSet(KEY_VISITED, s).apply()
+    }
+
+    fun visitedCities(): List<String> =
+        prefs.getStringSet(KEY_VISITED, emptySet())!!.sorted()
+
     val palette: MapWallpaperGenerator.Palette
         get() = MapWallpaperGenerator.Palette.byName(paletteName)
 
@@ -124,6 +147,10 @@ class Settings(ctx: Context) {
         private const val KEY_EMBASSY = "embassy_country"
         private const val KEY_ZOOM = "zoom_metres"
         private const val KEY_RIVER = "river_style"
+        private const val KEY_ONBOARDED = "onboarded"
+        private const val KEY_TRAVEL_ONLY = "travel_only"
+        private const val KEY_LAST_CITY = "last_set_city"
+        private const val KEY_VISITED = "visited_cities"
         private const val KEY_MANUAL = "manual_location"
         private const val KEY_MANUAL_LAT = "manual_lat"
         private const val KEY_MANUAL_LON = "manual_lon"
