@@ -98,3 +98,7 @@ MapWallpaperGenerator(overpassUrl = "https://your-overpass.example/api/interpret
 ```
 
 `warm()` is opt-in and never called on launch.
+
+## Licence
+
+GPL-3.0-only — see [LICENSE](LICENSE).

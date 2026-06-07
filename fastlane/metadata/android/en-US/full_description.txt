@@ -1,0 +1,13 @@
+CityWall sets a dark, roads-only street-map of the town or city you're in as your home
+and lock-screen wallpaper, and refreshes it as you travel.
+
+Features:
+* Roads-only OpenStreetMap street-maps on a dark background — no labels, no clutter
+* Several colour schemes (including a light "Daylight" theme), adjustable zoom, and a
+  choice of how rivers are drawn
+* Set the wallpaper on the home screen, lock screen, or both
+* Map your real location, the country's capital, or any place you pick manually
+* Optional "Pathfinder" leaderboard: be the first to a city and claim it
+* Optionally mark a chosen country's embassies on the map
+
+CityWall uses approximate location only and works with a self-hosted map server.

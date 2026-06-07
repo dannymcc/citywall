@@ -15,10 +15,10 @@ android {
         // APIs are version-guarded in code (CityResolver, WallpaperWorker.screenSize).
         minSdk = 26
         targetSdk = 35
-        // versionCode auto-increments from the CI run number so each published APK is
-        // a higher version and installs as an update. Falls back to 1 for local builds.
-        versionCode = (System.getenv("CITYWALL_VERSION_CODE") ?: "1").toIntOrNull() ?: 1
-        versionName = System.getenv("CITYWALL_VERSION_NAME") ?: "1.0"
+        // Our CI sets these from the run number / tag. F-Droid's build server sets no
+        // env, so the fallbacks must be the real current version (bump per release).
+        versionCode = (System.getenv("CITYWALL_VERSION_CODE") ?: "30200").toIntOrNull() ?: 30200
+        versionName = System.getenv("CITYWALL_VERSION_NAME") ?: "0.3.2"
     }
 
     // Release signing key + password come from CI secrets (decoded to citywall.keystore
