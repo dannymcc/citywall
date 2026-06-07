@@ -34,6 +34,29 @@ object PathfinderApi {
         }
     }
 
+    /** Delete all server-side data for this explorer (claims + record). */
+    fun forget(explorerId: String): Boolean {
+        return try {
+            val conn = (URL("$SERVER_URL/forget").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = 15000
+                readTimeout = 20000
+                setRequestProperty("Content-Type", "application/json")
+            }
+            try {
+                conn.outputStream.use {
+                    it.write(JSONObject().put("explorerId", explorerId).toString().toByteArray(Charsets.UTF_8))
+                }
+                conn.responseCode in 200..299
+            } finally {
+                conn.disconnect()
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     /** Nearest city/town to coordinates (for rural spots), or null. */
     fun nearest(lat: Double, lon: Double): CityFix? {
         return try {

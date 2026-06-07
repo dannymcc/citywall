@@ -171,6 +171,7 @@ private fun CityWallScreen() {
     var updating by remember { mutableStateOf(false) }
     var busyMessage by remember { mutableStateOf("Working…") }
     var updateAvailable by remember { mutableStateOf(false) }
+    var pathMsg by remember { mutableStateOf<String?>(null) }
 
     var permRefresh by remember { mutableStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -348,6 +349,15 @@ private fun CityWallScreen() {
             val l = withContext(Dispatchers.IO) { PathfinderApi.leaderboard() }
             leaderboard = l
             leaderboardLoading = false
+        }
+    }
+
+    fun deletePathfinderData() {
+        pathMsg = "Deleting…"
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) { PathfinderApi.forget(explorerId) }
+            pathMsg = if (ok) "Your Pathfinder data was deleted." else "Couldn't reach the server."
+            refreshLeaderboard()
         }
     }
 
@@ -591,6 +601,14 @@ private fun CityWallScreen() {
                         color = CwMuted,
                         fontSize = 12.sp,
                     )
+                    OutlinedButton(
+                        onClick = { deletePathfinderData() },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text("Delete my Pathfinder data", color = CwMuted)
+                    }
+                    pathMsg?.let { Text(it, color = CwMuted, fontSize = 12.sp) }
                 }
                 SectionLabel("YOUR CITIES")
                 if (visited.isEmpty()) {
@@ -746,6 +764,12 @@ private fun CityWallScreen() {
                             color = CwAccent,
                             fontSize = 14.sp,
                             modifier = Modifier.clickable { openUrl(context, "https://dmcc.io") },
+                        )
+                        Text(
+                            "Privacy policy",
+                            color = CwAccent,
+                            fontSize = 14.sp,
+                            modifier = Modifier.clickable { openUrl(context, "${PathfinderApi.SERVER_URL}/privacy") },
                         )
                         OutlinedButton(
                             onClick = { showLicences = true },
