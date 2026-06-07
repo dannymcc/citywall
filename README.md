@@ -1,21 +1,19 @@
 # CityWall
 
-A personal Android app that periodically detects your location, resolves it to a
-town or city, and sets the home and lock screen wallpaper to a generated **dark
-street-map** of that place. Each city is generated once and cached forever.
+**A dark street-map of wherever you are, as your phone wallpaper.**
 
-Release-signed APKs via GitHub Releases and a self-hosted F-Droid repo.
+CityWall sets a roads-only map of the town or city you're in as your home and lock
+screen, and quietly refreshes it as you travel — a new place, a new map. No labels, no
+clutter; just the streets (and a hint of the rivers) on a dark background.
 
 ## Install
 
-Android 8.0+ (`minSdk 26`). Not on Google Play.
+Android 8.0+. Not on Google Play.
 
 ### F-Droid (recommended — automatic updates)
 
-Add the self-hosted repository, then install CityWall from it:
-
 1. In the **F-Droid** app: **Settings → Repositories → ➕**.
-2. Paste this URL (the fingerprint pins the repo's signing key):
+2. Paste this (the fingerprint pins the repo's signing key):
 
    ```
    https://citywall.dmcc.io/fdroid/repo?fingerprint=7478B6A7A77BE7BA332EBF98955255A47814C6986F447CC426834EAFC7DAF4D1
@@ -23,105 +21,65 @@ Add the self-hosted repository, then install CityWall from it:
 
 3. Search for **CityWall** and install. Updates then arrive through F-Droid.
 
-> The official **f-droid.org** listing is in progress — see
-> [`docs/fdroid-official.md`](docs/fdroid-official.md).
+> An official **f-droid.org** listing is in progress.
 
-### Direct APK from GitHub
+### Direct APK
 
-1. Download **[citywall.apk](https://github.com/dannymcc/citywall/releases/latest/download/citywall.apk)**
-   (or choose a version on the [Releases page](https://github.com/dannymcc/citywall/releases)).
-2. When prompted, allow "install unknown apps" for your browser or files app.
-3. Open the APK to install. It can then update itself via **About → Check for updates**.
+Download **[citywall.apk](https://github.com/dannymcc/citywall/releases/latest/download/citywall.apk)**
+(or pick a version on [Releases](https://github.com/dannymcc/citywall/releases)), allow
+"install unknown apps" when prompted, and open it. The app can update itself from
+**About → Check for updates**.
+
+## What it does
+
+- **Roads-only street-maps** with subtle rivers, on a dark background.
+- **Colour schemes** — the default dark CityWall scheme, a light "Daylight" theme, and
+  more — plus adjustable **zoom** and how prominently **rivers** are drawn.
+- Set the wallpaper on the **home screen, lock screen, or both**.
+- **Updates as you travel** — only changes when you reach a new city, to save battery.
+- Map your **real location**, your **country's capital**, or **any place** you pick
+  manually. Out in the countryside? It maps the **nearest town**.
+- **Pathfinder** (opt-in) — be the first to a city and claim it on a leaderboard, and
+  keep a list of the places you've been.
+- Optionally mark a chosen **country's embassies** on the map.
+
+## Privacy
+
+CityWall is built to know as little about you as possible.
+
+- **Approximate location only.** It uses coarse, city-level location — never your exact
+  position — and only to work out which place to draw. Prefer not to share it? Pick a
+  location manually instead.
+- **No accounts, no ads, no analytics, no trackers, no advertising ID.** There's nothing
+  that identifies you.
+- **Pathfinder is off by default.** Nothing about claims leaves your device unless you
+  turn it on. You can delete your Pathfinder data any time (Pathfinder → *Delete my
+  data*).
+
+### What the server sees
+
+Maps are drawn by a small companion server. When the app asks it for your wallpaper, the
+entire request looks like this:
+
+```
+GET /wallpaper?lat=48.86&lon=2.35&palette=CityWall&w=1080&h=2340&zoom=2200&river=subtle
+```
+
+That's the whole story: an **approximate area** and **how you'd like it drawn**. No name,
+no account, no device or advertising ID, no contacts — there is nothing to tie it to you,
+and the coordinates are coarse (≈ city-level), not your doorstep.
+
+If you join **Pathfinder**, claiming a city additionally sends a random, anonymous
+"explorer ID" with the city's name and approximate coordinates — and that's deletable in
+the app at any time.
+
+Full policy: **<https://citywall.dmcc.io/privacy>**.
 
 ## Issues & feedback
 
-Bugs and ideas are welcome — open an issue:
-**<https://github.com/dannymcc/citywall/issues>**. For visual problems, include your
-Android version and a screenshot.
-
-## The look
-
-Roads only, on a near-black slate-navy (`#1A1E27`) background. No labels, no POIs,
-no fills. Road hierarchy is visible — motorways thick and light, residential streets
-thin and dim. Roundabouts appear naturally as small loops.
-
-## How it works
-
-- **UI:** Jetpack Compose + Material 3, a dark cartographic theme (slate-mono accent),
-  adaptive icon and splash screen.
-- **Map data:** OpenStreetMap via the [Overpass API](https://overpass-api.de),
-  rendered onto a `Canvas` by hand. No tiles, no labels, no API key, no Mapbox/Google.
-- **Location:** AOSP `LocationManager` (coarse only). No Play Services. Async APIs on
-  API 33+, version-guarded legacy fallbacks below.
-- **Scheduling:** `WorkManager` periodic work. Survives reboot on its own.
-- **Caching:** one PNG per city (per palette) in internal storage. A cache hit skips
-  the network.
-- **Capitals:** all world capitals with coordinates are bundled (data only), so
-  capital mode is instant and offline.
-- **JSON:** built-in `org.json`.
-
-**Device support:** `minSdk 26` (Android 8.0+), `compile`/`targetSdk 35`, Java 17.
-
-Maps are rendered by a companion server (`citywall.dmcc.io`), so the area you're
-mapping is sent to fetch the map (approximate location only, never your identity). The
-opt-in **Pathfinder** leaderboard (off by default) lets you claim cities you visit. See
-the in-app privacy policy and [`docs/gamification.md`](docs/gamification.md).
-
-## Build & install
-
-There is no Android SDK in this checkout's tooling, so build with Android Studio:
-
-1. Open the project in Android Studio. It will set up the Gradle wrapper and sync.
-   (Or, with a local Gradle ≥ 8.9: `gradle wrapper` then `./gradlew assembleDebug`.)
-2. Plug in the Pixel with USB debugging on, hit Run, or
-   `./gradlew installDebug`.
-3. Launch CityWall, tap **Grant location permissions** (foreground first, then the
-   separate background prompt), then **Update wallpaper now**.
-4. Tap **Enable hourly updates** to schedule the background refresh.
-
-`minSdk 26`, `targetSdk`/`compileSdk 35`, Java 17. Let Studio bump AGP/Kotlin if it
-offers a newer stable combo.
-
-## In-app settings
-
-All opt-in; defaults are hourly, the CityWall scheme, and your real town. Persisted
-in `SharedPreferences`. The UI is split into bottom tabs: Wallpaper, Pathfinder,
-Settings, About.
-
-- **Update frequency** — 15 minutes up to daily. 15 min is the platform floor.
-  Re-tap *Enable periodic updates* after changing it to apply the new interval.
-- **Colour palette** — CityWall (default, dark roads on slate), Midnight Slate, Carbon, Blueprint, Amber, Forest. Each city
-  caches per palette, so switching theme regenerates once rather than serving stale.
-- **Capital-city mode** — map the capital of the country you're in instead of your
-  actual town (falls back to your town if the country isn't in the lookup).
-
-The permission flow guides you through Settings when a dialog can't grant a
-permission (background location on Android 11+, or anything permanently denied).
-
-## Tuning knobs (in code)
-
-- **Zoom:** `halfHeightMetres` in `MapWallpaperGenerator` (default 2200 m).
-- **Palettes:** add presets to `MapWallpaperGenerator.Palette.ALL`; they appear in the
-  picker automatically.
-- **Which roads draw:** the `RoadClass` table and `classify()` in
-  `MapWallpaperGenerator`. footway/path/cycleway/pedestrian/steps are skipped — add
-  cases to bring them back.
-- **Capital lookup:** `Capitals.MAP` (ISO country code → capital name).
-
-## Overpass etiquette
-
-The default endpoint is the **shared public instance**. That's fine for the lazy,
-one-city-at-a-time path the app uses by default (one query per new city you visit).
-
-It is **not** fine for `WallpaperRepository.warm(...)`, which fires a query per city
-in the list. If you want to pre-warm `MAJOR_CITIES`, stand up a private Overpass
-instance on a VPS first and pass its URL in:
-
-```kotlin
-MapWallpaperGenerator(overpassUrl = "https://your-overpass.example/api/interpreter")
-```
-
-`warm()` is opt-in and never called on launch.
+Bugs and ideas are welcome — open an issue at
+**<https://github.com/dannymcc/citywall/issues>**. For anything visual, please include
+your Android version and a screenshot.
 
 ## Licence
 
