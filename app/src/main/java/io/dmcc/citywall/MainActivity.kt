@@ -476,7 +476,21 @@ private fun CityWallScreen() {
                     if (preview != null) generate(apply = false)
                 }
                 SectionLabel("ZOOM")
-                Text("$zoomMetres m view — smaller is closer", color = CwMuted, fontSize = 12.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "$zoomMetres m view — smaller is closer",
+                        color = CwMuted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (zoomMetres != 2200) {
+                        TextButton(onClick = {
+                            zoomMetres = 2200
+                            settings.zoomMetres = 2200
+                            if (preview != null) generate(apply = false)
+                        }) { Text("Reset", color = CwAccent) }
+                    }
+                }
                 Slider(
                     value = zoomMetres.toFloat(),
                     onValueChange = { zoomMetres = it.toInt() },
