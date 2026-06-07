@@ -4,17 +4,14 @@ A personal Android app that periodically detects your location, resolves it to a
 town or city, and sets the home and lock screen wallpaper to a generated **dark
 street-map** of that place. Each city is generated once and cached forever.
 
-Heading toward the Play Store; current builds are debug-signed for sideloading.
+Release-signed APKs via GitHub Releases and a self-hosted F-Droid repo.
 
 ## Download
 
-**[⬇ Download the latest APK](https://github.com/dannymcc/citywall/releases/latest/download/citywall.apk)** — release-signed, sideloadable on Android 8.0+.
+**[⬇ Latest APK](https://github.com/dannymcc/citywall/releases/latest/download/citywall.apk)** — release-signed, Android 8.0+. Enable "install unknown apps" for your browser, open the APK, and install.
 
-> This repo is **private**, so the link only resolves when you're signed in to GitHub
-> with access to it (it 404s for anyone else). Every tagged release attaches a fresh
-> APK — browse them on the [Releases page](https://github.com/dannymcc/citywall/releases).
-
-On the device, enable "install unknown apps" for your browser, open the APK, and install.
+Or add the **F-Droid repo** for auto-updates: `https://citywall.dmcc.io/fdroid/repo`
+(fingerprint `7478B6A7A77BE7BA332EBF98955255A47814C6986F447CC426834EAFC7DAF4D1`).
 
 ## The look
 
@@ -39,9 +36,10 @@ thin and dim. Roundabouts appear naturally as small loops.
 
 **Device support:** `minSdk 26` (Android 8.0+), `compile`/`targetSdk 35`, Java 17.
 
-The shared **world map / city-claiming** game is opt-in and not yet built — see
-[`docs/gamification.md`](docs/gamification.md). With it off (the default), the app is
-fully local and nothing leaves the device.
+Maps are rendered by a companion server (`citywall.dmcc.io`), so the area you're
+mapping is sent to fetch the map (approximate location only, never your identity). The
+opt-in **Pathfinder** leaderboard (off by default) lets you claim cities you visit. See
+the in-app privacy policy and [`docs/gamification.md`](docs/gamification.md).
 
 ## Build & install
 
