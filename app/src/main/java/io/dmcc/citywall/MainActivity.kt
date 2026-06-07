@@ -94,6 +94,7 @@ import io.dmcc.citywall.ui.CwSurface
 import io.dmcc.citywall.ui.MapSlate
 import io.dmcc.citywall.ui.MonoLabel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -112,6 +113,13 @@ private val TARGET_VALUES = listOf(Settings.TARGET_BOTH, Settings.TARGET_HOME, S
 private val RIVER_LABELS = listOf("Subtle", "Bold", "Off")
 private val RIVER_VALUES = listOf("subtle", "bold", "off")
 private val TAB_LABELS = listOf("Wallpaper", "Pathfinder", "Settings", "About")
+private val BUSY_MESSAGES = listOf(
+    "Finding your location…",
+    "Querying OpenStreetMap…",
+    "Drawing the roads…",
+    "Adding rivers…",
+    "Almost there…",
+)
 // Country options for the embassy overlay: "" (none) + ISO codes sorted by name.
 private val EMBASSY_CODES: List<String> =
     listOf("") + java.util.Locale.getISOCountries().sortedBy { java.util.Locale("", it).displayCountry }
@@ -120,7 +128,7 @@ private val EMBASSY_LABELS: List<String> =
 
 private enum class PermStep { LOCATION, BACKGROUND, NOTIFICATIONS, DONE }
 private enum class Source { GPS, MANUAL, SAMPLE }
-private class GenOutcome(val name: String, val bmp: Bitmap, val source: Source, val claim: String?)
+private class GenOutcome(val name: String, val bmp: Bitmap, val source: Source, val lat: Double, val lon: Double)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -160,6 +168,7 @@ private fun CityWallScreen() {
     var preview by remember { mutableStateOf<Bitmap?>(null) }
     var previewCity by remember { mutableStateOf<String?>(null) }
     var previewSource by remember { mutableStateOf(Source.SAMPLE) }
+    var previewFix by remember { mutableStateOf<CityFix?>(null) }
     var generating by remember { mutableStateOf(false) }
     var statusMsg by remember { mutableStateOf<String?>(null) }
     var hasBackup by remember { mutableStateOf(WallpaperBackup.available(context)) }
@@ -168,6 +177,8 @@ private fun CityWallScreen() {
     var leaderboardLoading by remember { mutableStateOf(false) }
     var updateMsg by remember { mutableStateOf<String?>(null) }
     var updating by remember { mutableStateOf(false) }
+    var busyMessage by remember { mutableStateOf(BUSY_MESSAGES[0]) }
+    var updateAvailable by remember { mutableStateOf(false) }
 
     var permRefresh by remember { mutableStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -207,7 +218,8 @@ private fun CityWallScreen() {
         ActivityResultContracts.RequestPermission(),
     ) { permRefresh++ }
 
-    fun generate(apply: Boolean) {
+    // Generate (preview) only — produces the bitmap, doesn't touch the wallpaper.
+    fun generate() {
         generating = true
         statusMsg = null
         scope.launch {
@@ -216,7 +228,16 @@ private fun CityWallScreen() {
                     val manual = settings.manualFix()
                     val pair: Pair<CityFix?, Source> = when {
                         manual != null -> manual to Source.MANUAL
-                        hasCoarse -> CityResolver(context).currentCity(useCapital) to Source.GPS
+                        hasCoarse -> {
+                            val resolver = CityResolver(context)
+                            var c = resolver.currentCity(useCapital)
+                            if (c == null) {
+                                val la = resolver.lastLat
+                                val lo = resolver.lastLon
+                                if (la != null && lo != null) c = PathfinderApi.nearest(la, lo)
+                            }
+                            c to Source.GPS
+                        }
                         else -> sampleCapital(context)
                             .let { CityFix(it.name, it.lat, it.lon) } to Source.SAMPLE
                     }
@@ -234,15 +255,7 @@ private fun CityWallScreen() {
                     )
                     val bmp = WallpaperRepository(context, generator)
                         .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
-                    var claim: String? = null
-                    if (apply) {
-                        WallpaperBackup.backupOnce(context)
-                        WallpaperWorker.applyWallpaper(context, bmp, settings.wallpaperFlags())
-                        if (pair.second == Source.GPS && joinWorldMap) {
-                            claim = PathfinderApi.claim(explorerId, fix.name, fix.lat, fix.lon, false)
-                        }
-                    }
-                    Result.success(GenOutcome(fix.name, bmp, pair.second, claim))
+                    Result.success(GenOutcome(fix.name, bmp, pair.second, fix.lat, fix.lon))
                 } catch (e: Exception) {
                     Result.failure(e)
                 }
@@ -252,19 +265,10 @@ private fun CityWallScreen() {
                 preview = o.bmp
                 previewCity = o.name
                 previewSource = o.source
+                previewFix = CityFix(o.name, o.lat, o.lon)
                 if (o.source != Source.SAMPLE) {
                     settings.recordCity(o.name)
                     visited = settings.visitedCities()
-                }
-                if (apply) {
-                    settings.lastSetCity = o.name
-                    hasBackup = WallpaperBackup.available(context)
-                    statusMsg = when (o.claim) {
-                        "claimed" -> "Wallpaper set — you're the Pathfinder of ${o.name}!"
-                        "taken" -> "Wallpaper set. ${o.name} is already claimed by another explorer."
-                        "yours" -> "Wallpaper set for ${o.name} — your claim."
-                        else -> "Wallpaper set for ${o.name}"
-                    }
                 }
             }.onFailure {
                 statusMsg = if (it.message == "no-location") {
@@ -272,6 +276,36 @@ private fun CityWallScreen() {
                 } else {
                     "Couldn't generate the map: ${it.message}"
                 }
+            }
+        }
+    }
+
+    // Apply the already-generated preview as wallpaper — no regeneration.
+    fun setWallpaper() {
+        val bmp = preview ?: return
+        val fix = previewFix
+        val source = previewSource
+        generating = true
+        statusMsg = null
+        scope.launch {
+            val claim = withContext(Dispatchers.IO) {
+                WallpaperBackup.backupOnce(context)
+                WallpaperWorker.applyWallpaper(context, bmp, settings.wallpaperFlags())
+                if (source == Source.GPS && joinWorldMap && fix != null) {
+                    PathfinderApi.claim(explorerId, fix.name, fix.lat, fix.lon, false)
+                } else {
+                    null
+                }
+            }
+            generating = false
+            hasBackup = WallpaperBackup.available(context)
+            if (fix != null) settings.lastSetCity = fix.name
+            val where = previewCity?.let { " for $it" } ?: ""
+            statusMsg = when (claim) {
+                "claimed" -> "Wallpaper set — you're the Pathfinder of ${previewCity}!"
+                "taken" -> "Wallpaper set. ${previewCity} is already claimed by another explorer."
+                "yours" -> "Wallpaper set$where — your claim."
+                else -> "Wallpaper set$where"
             }
         }
     }
@@ -296,7 +330,7 @@ private fun CityWallScreen() {
             if (coords != null) {
                 settings.setManual(query, coords.first, coords.second)
                 manualName = query
-                generate(false)
+                generate()
             } else {
                 statusMsg = "Couldn't find “$query”."
             }
@@ -343,10 +377,27 @@ private fun CityWallScreen() {
     }
 
     LaunchedEffect(Unit) {
-        if (preview == null) generate(apply = false)
+        if (preview == null) generate()
     }
     LaunchedEffect(joinWorldMap, selectedTab) {
         if (joinWorldMap && selectedTab == 1) refreshLeaderboard()
+    }
+    // Rotate progress messages while generating.
+    LaunchedEffect(generating) {
+        if (!generating) return@LaunchedEffect
+        var i = 0
+        while (true) {
+            busyMessage = BUSY_MESSAGES[i % BUSY_MESSAGES.size]
+            i++
+            delay(1100)
+        }
+    }
+    // Check once for an update so the About tab can show a badge.
+    LaunchedEffect(Unit) {
+        val latest = withContext(Dispatchers.IO) { Updater.latest() }
+        if (latest != null && latest.versionName.isNotEmpty() && latest.versionName != BuildConfig.VERSION_NAME) {
+            updateAvailable = true
+        }
     }
 
     if (!onboarded) {
@@ -362,7 +413,7 @@ private fun CityWallScreen() {
                     NavigationBarItem(
                         selected = selectedTab == i,
                         onClick = { selectedTab = i },
-                        icon = { TabIcon(i, selectedTab == i) },
+                        icon = { TabIcon(i, selectedTab == i, badge = i == 3 && updateAvailable) },
                         label = { Text(label, fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = CwAccent,
@@ -381,7 +432,7 @@ private fun CityWallScreen() {
                 Header()
                 HeroPreview(preview, previewCity, previewSource, generating)
                 OutlinedButton(
-                    onClick = { generate(apply = false) },
+                    onClick = { generate() },
                     enabled = !generating,
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     shape = RoundedCornerShape(14.dp),
@@ -396,13 +447,15 @@ private fun CityWallScreen() {
                     )
                 }
                 Button(
-                    onClick = { generate(apply = true) },
-                    enabled = !generating,
+                    onClick = { setWallpaper() },
+                    enabled = preview != null && !generating,
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = CwAccent,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
+                        disabledContainerColor = CwSurface,
+                        disabledContentColor = CwMuted,
                     ),
                 ) {
                     if (generating) {
@@ -412,9 +465,9 @@ private fun CityWallScreen() {
                             strokeWidth = 2.dp,
                         )
                         Spacer(Modifier.width(12.dp))
-                        Text("Working…", fontWeight = FontWeight.SemiBold)
+                        Text(busyMessage, fontWeight = FontWeight.SemiBold)
                     } else {
-                        Text("Generate & set wallpaper", fontWeight = FontWeight.SemiBold)
+                        Text("Set as wallpaper", fontWeight = FontWeight.SemiBold)
                     }
                 }
                 if (hasBackup) {
@@ -424,10 +477,10 @@ private fun CityWallScreen() {
                 }
                 preview?.let { bmp ->
                     TextButton(onClick = { shareWallpaper(context, bmp) }, enabled = !generating) {
-                        Text("Share this map", color = CwAccent)
+                        Text("Share this CityWall", color = CwAccent)
                     }
                 }
-                statusMsg?.let { Text(it, color = CwMuted, fontSize = 13.sp) }
+                (if (generating) busyMessage else statusMsg)?.let { Text(it, color = CwMuted, fontSize = 13.sp) }
                 if (step != PermStep.DONE) {
                     PermissionStepCard(
                         step = step,
@@ -468,12 +521,12 @@ private fun CityWallScreen() {
                 PickerRow("Palette", PALETTE_NAMES, PALETTE_NAMES.indexOf(paletteName)) { i ->
                     paletteName = PALETTE_NAMES[i]
                     settings.paletteName = paletteName
-                    if (preview != null) generate(apply = false)
+                    if (preview != null) generate()
                 }
                 PickerRow("Rivers", RIVER_LABELS, RIVER_VALUES.indexOf(riverStyle).coerceAtLeast(0)) { i ->
                     riverStyle = RIVER_VALUES[i]
                     settings.riverStyle = riverStyle
-                    if (preview != null) generate(apply = false)
+                    if (preview != null) generate()
                 }
                 SectionLabel("ZOOM")
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -487,7 +540,7 @@ private fun CityWallScreen() {
                         TextButton(onClick = {
                             zoomMetres = 2200
                             settings.zoomMetres = 2200
-                            if (preview != null) generate(apply = false)
+                            if (preview != null) generate()
                         }) { Text("Reset", color = CwAccent) }
                     }
                 }
@@ -497,7 +550,7 @@ private fun CityWallScreen() {
                     valueRange = 1200f..4500f,
                     onValueChangeFinished = {
                         settings.zoomMetres = zoomMetres
-                        if (preview != null) generate(apply = false)
+                        if (preview != null) generate()
                     },
                 )
             }
@@ -596,7 +649,7 @@ private fun CityWallScreen() {
                             TextButton(onClick = {
                                 settings.clearManual()
                                 manualName = null
-                                generate(false)
+                                generate()
                             }) { Text("Use GPS", color = CwAccent) }
                         }
                     }
@@ -618,7 +671,7 @@ private fun CityWallScreen() {
                     val code = EMBASSY_CODES[i].ifEmpty { null }
                     embassyCountry = code
                     settings.embassyCountry = code
-                    if (preview != null) generate(apply = false)
+                    if (preview != null) generate()
                 }
                 Text(
                     "Marks that country's embassies on the map as subtle dots, where they fall in view.",
@@ -731,11 +784,14 @@ private fun TabColumn(inner: PaddingValues, content: @Composable ColumnScope.() 
 }
 
 @Composable
-private fun TabIcon(index: Int, active: Boolean) {
+private fun TabIcon(index: Int, active: Boolean, badge: Boolean = false) {
     val c = if (active) CwAccent else CwMuted
     Canvas(Modifier.size(24.dp)) {
         val s = size.minDimension
         val stroke = Stroke(width = s * 0.09f)
+        if (badge) {
+            drawCircle(CwAccent, radius = s * 0.14f, center = Offset(s * 0.86f, s * 0.14f))
+        }
         when (index) {
             0 -> {
                 drawRoundRect(
@@ -785,7 +841,8 @@ private fun Onboarding(onStart: () -> Unit) {
         OnboardLine("Updates as you travel — a new city, a new map.")
         OnboardLine("Tune the palette, zoom and rivers; mark a country's embassies.")
         OnboardLine("Be first to a city and claim it on the Pathfinder leaderboard.")
-        OnboardLine("Coarse location only. Nothing leaves your device unless you opt in.")
+        OnboardLine("Uses your approximate location, never your exact spot.")
+        OnboardLine("Maps are fetched from our server; Pathfinder (opt-in) shares the cities you claim.")
         Spacer(Modifier.weight(1f))
         Button(
             onClick = onStart,
@@ -1154,7 +1211,7 @@ private fun shareWallpaper(context: Context, bitmap: Bitmap) {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(
-            Intent.createChooser(send, "Share map").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            Intent.createChooser(send, "Share CityWall").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     } catch (_: Exception) {
     }

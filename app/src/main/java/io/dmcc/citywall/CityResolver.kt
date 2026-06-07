@@ -32,6 +32,13 @@ class CityResolver(private val ctx: Context) {
 
     private val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
+    /** The coordinates of the most recent fix (set by [currentCity]), so callers can
+     *  look up the nearest city when not in a named locality. */
+    var lastLat: Double? = null
+        private set
+    var lastLon: Double? = null
+        private set
+
     private fun hasCoarse(): Boolean =
         ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
@@ -45,16 +52,20 @@ class CityResolver(private val ctx: Context) {
     fun currentCity(useCapital: Boolean = false): CityFix? {
         if (!hasCoarse()) return null
         val loc = acquireLocation() ?: return null
-        val address = reverseGeocode(loc.latitude, loc.longitude) ?: return null
+        lastLat = loc.latitude
+        lastLon = loc.longitude
+        val address = reverseGeocode(loc.latitude, loc.longitude)
 
         if (useCapital) {
             // Bundled coordinates — no geocoder round-trip, works offline.
-            val capital = Capitals.forCountry(address.countryCode)
+            val capital = Capitals.forCountry(address?.countryCode)
             if (capital != null) return CityFix(capital.name, capital.lat, capital.lon)
             // else fall through to the real local area
         }
 
-        val name = address.locality ?: address.subAdminArea ?: address.adminArea ?: return null
+        // Only a real locality counts as "in a city"; otherwise the caller can fall
+        // back to the nearest city via lastLat/lastLon.
+        val name = address?.locality ?: return null
         return CityFix(name, loc.latitude, loc.longitude)
     }
 

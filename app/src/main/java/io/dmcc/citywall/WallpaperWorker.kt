@@ -20,10 +20,16 @@ class WallpaperWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
     override fun doWork(): Result {
         return try {
             val settings = Settings(applicationContext)
-            // Manual location wins if set; otherwise resolve via GPS.
-            val fix = settings.manualFix()
-                ?: CityResolver(applicationContext).currentCity(settings.useCapital)
-                ?: return Result.retry()
+            // Manual location wins if set; otherwise resolve via GPS, falling back to
+            // the nearest city when not in a named locality.
+            val fix = settings.manualFix() ?: run {
+                val resolver = CityResolver(applicationContext)
+                resolver.currentCity(settings.useCapital) ?: run {
+                    val la = resolver.lastLat
+                    val lo = resolver.lastLon
+                    if (la != null && lo != null) PathfinderApi.nearest(la, lo) else null
+                }
+            } ?: return Result.retry()
             // Travel-only: skip when we're still in the same city as last time.
             if (settings.travelOnly && fix.name == settings.lastSetCity) {
                 return Result.success()

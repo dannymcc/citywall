@@ -34,6 +34,24 @@ object PathfinderApi {
         }
     }
 
+    /** Nearest city/town to coordinates (for rural spots), or null. */
+    fun nearest(lat: Double, lon: Double): CityFix? {
+        return try {
+            val conn = (URL("$SERVER_URL/nearest?lat=$lat&lon=$lon").openConnection() as HttpURLConnection)
+                .apply { connectTimeout = 15000; readTimeout = 60000 }
+            try {
+                if (conn.responseCode !in 200..299) return null
+                val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                if (!o.optBoolean("found", false)) return null
+                CityFix(o.optString("name"), o.optDouble("lat"), o.optDouble("lon"))
+            } finally {
+                conn.disconnect()
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     /** Claim a city. Returns the status (claimed/yours/taken/ineligible/...) or null on error. */
     fun claim(explorerId: String, cityName: String, lat: Double, lon: Double, manual: Boolean): String? {
         return try {
