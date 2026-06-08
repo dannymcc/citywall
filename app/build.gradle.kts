@@ -17,8 +17,8 @@ android {
         targetSdk = 35
         // Our CI sets these from the run number / tag. F-Droid's build server sets no
         // env, so the fallbacks must be the real current version (bump per release).
-        versionCode = (System.getenv("CITYWALL_VERSION_CODE") ?: "30300").toIntOrNull() ?: 30300
-        versionName = System.getenv("CITYWALL_VERSION_NAME") ?: "0.3.3"
+        versionCode = (System.getenv("CITYWALL_VERSION_CODE") ?: "30400").toIntOrNull() ?: 30400
+        versionName = System.getenv("CITYWALL_VERSION_NAME") ?: "0.3.4"
     }
 
     // Release signing key + password come from CI secrets (decoded to citywall.keystore

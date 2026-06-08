@@ -47,6 +47,21 @@ class Settings(ctx: Context) {
         set(v) = prefs.edit().putBoolean(KEY_AUTO, v).apply()
 
     /**
+     * Draw maps on the device instead of fetching them from the CityWall server. When
+     * on, our server never sees a map request — roads are queried straight from
+     * OpenStreetMap. Trade-off: no rivers or embassy markers (the device renderer is
+     * roads-only) and capitals aren't pre-rendered, so each new place takes longer.
+     */
+    var renderOnDevice: Boolean
+        get() = prefs.getBoolean(KEY_ON_DEVICE, false)
+        set(v) = prefs.edit().putBoolean(KEY_ON_DEVICE, v).apply()
+
+    /** Post a notification when a background update sets a wallpaper for a new city. */
+    var notifyOnChange: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFY_CHANGE, true)
+        set(v) = prefs.edit().putBoolean(KEY_NOTIFY_CHANGE, v).apply()
+
+    /**
      * Opt-in to the shared CityWall world map. OFF by default: while off, nothing
      * about the user's location or claimed cities ever leaves the device. Turning it
      * on is the only thing that enables any upload — see docs/gamification.md.
@@ -152,6 +167,8 @@ class Settings(ctx: Context) {
         private const val KEY_PALETTE = "palette"
         private const val KEY_CAPITAL = "use_capital"
         private const val KEY_AUTO = "auto_update"
+        private const val KEY_ON_DEVICE = "render_on_device"
+        private const val KEY_NOTIFY_CHANGE = "notify_on_change"
         private const val KEY_WORLD_MAP = "join_world_map"
         private const val KEY_EMBASSY = "embassy_country"
         private const val KEY_ZOOM = "zoom_metres"

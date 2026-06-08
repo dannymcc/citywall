@@ -33,9 +33,11 @@ class MapWallpaperGenerator(
     private val geometryCacheDir: File? = null,
 ) : WallpaperGenerator {
 
-    // Cache entries are namespaced by palette so switching theme regenerates once.
+    // Cache entries are namespaced by palette + zoom so switching either regenerates
+    // once (and the on-device-only path doesn't reuse a different-zoom bitmap).
     override val variantKey: String =
-        palette.name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+        palette.name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-') +
+            "-z${halfHeightMetres.toInt()}"
 
     /**
      * Road classes. `rank` controls draw order (low rank drawn first, so major roads

@@ -144,6 +144,8 @@ private fun CityWallScreen() {
     var freqMinutes by remember { mutableStateOf(settings.updateMinutes) }
     var useCapital by remember { mutableStateOf(settings.useCapital) }
     var autoUpdate by remember { mutableStateOf(settings.autoUpdate) }
+    var renderOnDevice by remember { mutableStateOf(settings.renderOnDevice) }
+    var notifyOnChange by remember { mutableStateOf(settings.notifyOnChange) }
     var joinWorldMap by remember { mutableStateOf(settings.joinWorldMap) }
     var wallpaperTarget by remember { mutableStateOf(settings.wallpaperTarget) }
     var embassyCountry by remember { mutableStateOf(settings.embassyCountry) }
@@ -252,15 +254,7 @@ private fun CityWallScreen() {
             val bmp = withContext(Dispatchers.IO) {
                 try {
                     val (w, h) = WallpaperWorker.screenSize(context)
-                    val local = MapWallpaperGenerator(
-                        palette = settings.palette,
-                        halfHeightMetres = settings.zoomMetres.toDouble(),
-                        geometryCacheDir = File(context.filesDir, "geometry"),
-                    )
-                    val generator = RemoteWallpaperGenerator(
-                        settings.palette, local, settings.embassyCountry,
-                        settings.zoomMetres, settings.riverStyle,
-                    )
+                    val generator = WallpaperFactory.forSettings(context, settings)
                     val b = WallpaperRepository(context, generator).getOrCreate(fix.name, fix.lat, fix.lon, w, h)
                     LastPreview.save(context, b) // show instantly on next open
                     b
@@ -726,6 +720,25 @@ private fun CityWallScreen() {
                 ) { on ->
                     travelOnly = on
                     settings.travelOnly = on
+                }
+                SwitchRow(
+                    "Notify me on a new city",
+                    "Get a quiet notification when a background update maps a new city.",
+                    notifyOnChange,
+                ) { on ->
+                    notifyOnChange = on
+                    settings.notifyOnChange = on
+                }
+                SectionLabel("PRIVACY")
+                SwitchRow(
+                    "Draw maps on this device",
+                    "Never contact our server — query OpenStreetMap directly. " +
+                        "No rivers or embassy markers, and new places take a little longer.",
+                    renderOnDevice,
+                ) { on ->
+                    renderOnDevice = on
+                    settings.renderOnDevice = on
+                    if (preview != null) generate()
                 }
             }
 

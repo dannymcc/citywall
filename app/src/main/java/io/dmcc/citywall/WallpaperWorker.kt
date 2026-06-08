@@ -8,7 +8,6 @@ import android.util.DisplayMetrics
 import android.view.WindowManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import java.io.File
 
 /**
  * Periodic work: resolve the city, get-or-create its wallpaper, apply it. Any failure
@@ -35,24 +34,21 @@ class WallpaperWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
                 return Result.success()
             }
             val (w, h) = screenSize(applicationContext)
-            val local = MapWallpaperGenerator(
-                palette = settings.palette,
-                halfHeightMetres = settings.zoomMetres.toDouble(),
-                geometryCacheDir = File(applicationContext.filesDir, "geometry"),
-            )
-            val generator = RemoteWallpaperGenerator(
-                settings.palette, local, settings.embassyCountry,
-                settings.zoomMetres, settings.riverStyle,
-            )
+            val generator = WallpaperFactory.forSettings(applicationContext, settings)
             val bmp = WallpaperRepository(applicationContext, generator)
                 .getOrCreate(fix.name, fix.lat, fix.lon, w, h)
             WallpaperBackup.backupOnce(applicationContext) // preserve the original first
+            val isNewCity = fix.name != settings.lastSetCity
             applyWallpaper(applicationContext, bmp, settings.wallpaperFlags())
             LastPreview.save(applicationContext, bmp)
             settings.lastPreviewCity = fix.name
             settings.lastPreviewSource = if (settings.manualFix() != null) "MANUAL" else "GPS"
             settings.lastSetCity = fix.name
             if (settings.manualFix() == null) settings.recordCity(fix.name) // GPS visits only
+            // Let the user know when travelling actually moved them to a new city.
+            if (isNewCity && settings.notifyOnChange) {
+                Notifier.notifyCityChanged(applicationContext, fix.name)
+            }
             // Claim the city on the Pathfinder leaderboard if opted in and this was a
             // real GPS fix (manual locations are ineligible).
             if (settings.joinWorldMap && settings.manualFix() == null) {
