@@ -261,7 +261,9 @@ private fun CityWallScreen() {
                         settings.palette, local, settings.embassyCountry,
                         settings.zoomMetres, settings.riverStyle,
                     )
-                    WallpaperRepository(context, generator).getOrCreate(fix.name, fix.lat, fix.lon, w, h)
+                    val b = WallpaperRepository(context, generator).getOrCreate(fix.name, fix.lat, fix.lon, w, h)
+                    LastPreview.save(context, b) // show instantly on next open
+                    b
                 } catch (e: Exception) {
                     null
                 }
@@ -275,6 +277,8 @@ private fun CityWallScreen() {
             previewCity = fix.name
             previewSource = pair.second
             previewFix = fix
+            settings.lastPreviewCity = fix.name
+            settings.lastPreviewSource = pair.second.name
             // Only real GPS visits count as "your cities" — manual/sample don't.
             if (pair.second == Source.GPS) {
                 settings.recordCity(fix.name)
@@ -392,7 +396,19 @@ private fun CityWallScreen() {
     }
 
     LaunchedEffect(Unit) {
-        if (preview == null) generate()
+        if (preview == null) {
+            // Show the last wallpaper instantly; only generate if there's none yet.
+            val saved = withContext(Dispatchers.IO) { LastPreview.load(context) }
+            if (saved != null) {
+                preview = saved
+                previewCity = settings.lastPreviewCity
+                previewSource = runCatching {
+                    Source.valueOf(settings.lastPreviewSource ?: "GPS")
+                }.getOrDefault(Source.GPS)
+            } else {
+                generate()
+            }
+        }
     }
     LaunchedEffect(joinWorldMap, selectedTab) {
         if (joinWorldMap && selectedTab == 1) refreshLeaderboard()

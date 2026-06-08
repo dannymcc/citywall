@@ -103,6 +103,15 @@ class Settings(ctx: Context) {
             return id
         }
 
+    /** The most recently shown wallpaper's city + source (for instant display on open). */
+    var lastPreviewCity: String?
+        get() = prefs.getString(KEY_LAST_PREVIEW_CITY, null)
+        set(v) = prefs.edit().putString(KEY_LAST_PREVIEW_CITY, v).apply()
+
+    var lastPreviewSource: String?
+        get() = prefs.getString(KEY_LAST_PREVIEW_SOURCE, null)
+        set(v) = prefs.edit().putString(KEY_LAST_PREVIEW_SOURCE, v).apply()
+
     /** Whether the first-launch onboarding has been completed. */
     var onboarded: Boolean
         get() = prefs.getBoolean(KEY_ONBOARDED, false)
@@ -147,6 +156,8 @@ class Settings(ctx: Context) {
         private const val KEY_EMBASSY = "embassy_country"
         private const val KEY_ZOOM = "zoom_metres"
         private const val KEY_RIVER = "river_style"
+        private const val KEY_LAST_PREVIEW_CITY = "last_preview_city"
+        private const val KEY_LAST_PREVIEW_SOURCE = "last_preview_source"
         private const val KEY_ONBOARDED = "onboarded"
         private const val KEY_TRAVEL_ONLY = "travel_only"
         private const val KEY_LAST_CITY = "last_set_city"
