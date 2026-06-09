@@ -32,7 +32,7 @@ Builds:
     commit: v0.3.2
     subdir: app
     gradle:
-      - yes
+      - fdroid
 
 # CityWall fetches pre-rendered maps and the Pathfinder leaderboard from a self-hosted
 # server (citywall.dmcc.io), so it depends on a non-free network service.
@@ -56,6 +56,10 @@ CurrentVersionCode: 30200
 ## Notes
 - F-Droid signs with **its own key**, so F-Droid installs are a separate install base
   from our GitHub/self-hosted (`citywall.dmcc.io/fdroid`) APKs — they can't cross-update.
-- The in-app updater is irrelevant for F-Droid installs (F-Droid handles updates); it's
-  harmless but could be hidden when the installer is `org.fdroid.fdroid` later.
+- The `fdroid` product flavour (the one the metadata builds) has no self-updater:
+  F-Droid's inclusion policy forbids self-updating apps, so that flavour strips
+  `REQUEST_INSTALL_PACKAGES` and hides the update UI (`BuildConfig.SELF_UPDATER`).
+  Our own GitHub/self-hosted APKs are the `standard` flavour, which keeps it.
+- The submitted `commit:` must be a tag that contains the flavour split (v0.3.5+);
+  earlier tags only have the unflavoured build.
 - `fastlane/metadata/android/en-US/` in this repo provides the listing text/changelogs.

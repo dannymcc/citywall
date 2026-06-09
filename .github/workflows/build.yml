@@ -47,11 +47,13 @@ jobs:
           CITYWALL_VERSION_CODE: ${{ github.run_number }}
           CITYWALL_VERSION_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
           CITYWALL_KEYSTORE_PASSWORD: ${{ secrets.CITYWALL_KEYSTORE_PASSWORD }}
-        run: gradle assembleRelease --no-daemon
+        # standard flavour only: the fdroid flavour is built (and signed) by
+        # F-Droid's own build server, never by us.
+        run: gradle assembleStandardRelease --no-daemon
 
       # Give the asset a clean, stable name so releases/latest/download resolves.
       - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk citywall.apk
+        run: cp app/build/outputs/apk/standard/release/app-standard-release.apk citywall.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
