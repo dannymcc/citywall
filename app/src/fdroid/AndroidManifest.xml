@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- F-Droid's inclusion policy forbids self-updating apps, so the fdroid flavour
+     drops the permission the in-app updater needs. The updater UI is gated off
+     BuildConfig.SELF_UPDATER, so nothing in this flavour can reach it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission
+        android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:node="remove" />
+</manifest>

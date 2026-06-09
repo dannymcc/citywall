@@ -407,11 +407,14 @@ private fun CityWallScreen() {
     LaunchedEffect(joinWorldMap, selectedTab) {
         if (joinWorldMap && selectedTab == 1) refreshLeaderboard()
     }
-    // Check once for an update so the About tab can show a badge.
-    LaunchedEffect(Unit) {
-        val latest = withContext(Dispatchers.IO) { Updater.latest() }
-        if (latest != null && latest.versionName.isNotEmpty() && latest.versionName != BuildConfig.VERSION_NAME) {
-            updateAvailable = true
+    // Check once for an update so the About tab can show a badge. F-Droid builds
+    // have no self-updater (F-Droid delivers updates), so don't even phone home.
+    if (BuildConfig.SELF_UPDATER) {
+        LaunchedEffect(Unit) {
+            val latest = withContext(Dispatchers.IO) { Updater.latest() }
+            if (latest != null && latest.versionName.isNotEmpty() && latest.versionName != BuildConfig.VERSION_NAME) {
+                updateAvailable = true
+            }
         }
     }
 
@@ -769,15 +772,19 @@ private fun CityWallScreen() {
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.Medium,
                         )
-                        OutlinedButton(
-                            onClick = { checkForUpdate() },
-                            enabled = !updating,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                        ) {
-                            Text("Check for updates", color = MaterialTheme.colorScheme.onBackground)
+                        if (BuildConfig.SELF_UPDATER) {
+                            OutlinedButton(
+                                onClick = { checkForUpdate() },
+                                enabled = !updating,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Text("Check for updates", color = MaterialTheme.colorScheme.onBackground)
+                            }
+                            updateMsg?.let { Text(it, color = CwMuted, fontSize = 12.sp) }
+                        } else {
+                            Text("Updates arrive through F-Droid.", color = CwMuted, fontSize = 12.sp)
                         }
-                        updateMsg?.let { Text(it, color = CwMuted, fontSize = 12.sp) }
                     }
                 }
                 SectionLabel("ABOUT")

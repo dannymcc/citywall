@@ -21,6 +21,22 @@ android {
         versionName = System.getenv("CITYWALL_VERSION_NAME") ?: "0.3.4"
     }
 
+    // "standard" is the GitHub/self-hosted APK with the in-app updater. "fdroid" is
+    // what F-Droid's build server compiles: no self-updater (their inclusion policy
+    // forbids it) and no REQUEST_INSTALL_PACKAGES (removed in src/fdroid's manifest).
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("standard") {
+            dimension = "distribution"
+            isDefault = true
+            buildConfigField("boolean", "SELF_UPDATER", "true")
+        }
+        create("fdroid") {
+            dimension = "distribution"
+            buildConfigField("boolean", "SELF_UPDATER", "false")
+        }
+    }
+
     // Release signing key + password come from CI secrets (decoded to citywall.keystore
     // at build time), never from the repo. If absent (e.g. a local build without the
     // key), release falls back to the default debug signing so the build still works.

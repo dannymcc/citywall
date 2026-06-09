@@ -27,9 +27,10 @@ class MapWallpaperGenerator(
     private val overpassUrl: String = "https://overpass-api.de/api/interpreter",
     private val halfHeightMetres: Double = 2200.0,
     private val palette: Palette = Palette.DEFAULT,
-    // When set, the raw Overpass geometry is cached per city here. Re-rendering the
-    // same city in a different palette then skips the network — the look changes
-    // straight away. Geometry is palette-independent, so it's keyed by city only.
+    // When set, the raw Overpass geometry is cached here. Re-rendering the same view
+    // in a different palette then skips the network — the look changes straight away.
+    // Geometry is palette-independent but bbox-dependent (centre, zoom, screen aspect),
+    // so entries are keyed by city + bounding box (see loadOrFetchGeometry).
     private val geometryCacheDir: File? = null,
 ) : WallpaperGenerator {
 
@@ -92,11 +93,23 @@ class MapWallpaperGenerator(
     private fun citySlug(name: String): String =
         name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
+    // Cached geometry is only valid for the exact bounding box it was fetched for, so
+    // the key encodes the bbox itself (4 dp ≈ 11 m) — a zoom change or a same-named
+    // city at different coordinates gets its own entry rather than stale roads.
+    private fun bboxKey(south: Double, west: Double, north: Double, east: Double): String =
+        listOf(south, west, north, east).joinToString("_") {
+            String.format(java.util.Locale.US, "%.4f", it).replace("-", "m").replace(".", "p")
+        }
+
     private fun loadOrFetchGeometry(
         cityName: String, south: Double, west: Double, north: Double, east: Double,
     ): String {
-        val cacheFile = geometryCacheDir
-            ?.let { File(it.apply { mkdirs() }, "${citySlug(cityName)}.json") }
+        val cacheFile = geometryCacheDir?.let {
+            it.mkdirs()
+            // Drop the legacy slug-only entry; it predates bbox keys and can't be trusted.
+            File(it, "${citySlug(cityName)}.json").delete()
+            File(it, "${citySlug(cityName)}-${bboxKey(south, west, north, east)}.json")
+        }
         if (cacheFile != null && cacheFile.exists()) {
             try {
                 return cacheFile.readText()
