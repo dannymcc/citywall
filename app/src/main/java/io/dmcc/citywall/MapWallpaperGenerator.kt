@@ -34,11 +34,18 @@ class MapWallpaperGenerator(
     private val geometryCacheDir: File? = null,
 ) : WallpaperGenerator {
 
-    // Cache entries are namespaced by palette + zoom so switching either regenerates
-    // once (and the on-device-only path doesn't reuse a different-zoom bitmap).
+    private companion object {
+        // Bump whenever the rendered look changes (widths, colours, classification)
+        // so previously cached bitmaps regenerate. v2: Pathfinder restyle (#4).
+        const val STYLE_VERSION = 2
+    }
+
+    // Cache entries are namespaced by palette + zoom + style version, so a palette
+    // or zoom switch regenerates once and a renderer style change invalidates old
+    // bitmaps (bump STYLE_VERSION whenever the look changes).
     override val variantKey: String =
         palette.name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-') +
-            "-z${halfHeightMetres.toInt()}"
+            "-z${halfHeightMetres.toInt()}-s$STYLE_VERSION"
 
     /**
      * Road classes. `rank` controls draw order (low rank drawn first, so major roads
@@ -46,27 +53,40 @@ class MapWallpaperGenerator(
      * indexed by `rank`. Tune freely.
      */
     private enum class RoadClass(val rank: Int, val widthDp: Float) {
-        MINOR(0, 1.4f),
-        SERVICE(1, 1.1f),
-        TERTIARY(2, 2.2f),
+        MINOR(0, 1.3f),
+        SERVICE(1, 0.9f),
+        TERTIARY(2, 2.0f),
         SECONDARY(3, 3.0f),
-        PRIMARY(4, 4.0f),
-        MAJOR(5, 5.2f),
+        PRIMARY(4, 4.6f),
+        // Wide enough that the two halves of a dual carriageway merge into one
+        // bold stroke at default zoom.
+        MAJOR(5, 8.6f),
     }
 
     /**
-     * Maps an OSM `highway` tag value to a [RoadClass], or null to skip the way.
+     * Maps an OSM way to a [RoadClass], or null to skip it.
      * footway/path/cycleway/pedestrian/steps are deliberately skipped for a clean
-     * result — add cases here to bring them back.
+     * result — add cases here to bring them back. Link roads (slip roads) drop to
+     * tertiary width — at full class width they turn motorway junctions into
+     * spaghetti blobs — and roundabouts are capped at secondary width so they stay
+     * crisp rings rather than filling into blobs under the bold major stroke.
      */
-    private fun classify(highway: String): RoadClass? = when (highway) {
-        "residential", "unclassified", "living_street" -> RoadClass.MINOR
-        "service" -> RoadClass.SERVICE
-        "tertiary", "tertiary_link" -> RoadClass.TERTIARY
-        "secondary", "secondary_link" -> RoadClass.SECONDARY
-        "primary", "primary_link" -> RoadClass.PRIMARY
-        "motorway", "motorway_link", "trunk", "trunk_link" -> RoadClass.MAJOR
-        else -> null
+    private fun classify(highway: String, junction: String): RoadClass? {
+        val base = when (highway) {
+            "residential", "unclassified", "living_street" -> RoadClass.MINOR
+            "service" -> RoadClass.SERVICE
+            "tertiary", "tertiary_link" -> RoadClass.TERTIARY
+            "secondary" -> RoadClass.SECONDARY
+            "primary" -> RoadClass.PRIMARY
+            "motorway", "trunk" -> RoadClass.MAJOR
+            "secondary_link", "primary_link", "motorway_link", "trunk_link" -> RoadClass.TERTIARY
+            else -> null
+        } ?: return null
+        return if (junction == "roundabout" || junction == "circular") {
+            if (base.rank > RoadClass.SECONDARY.rank) RoadClass.SECONDARY else base
+        } else {
+            base
+        }
     }
 
     override fun generate(
@@ -177,7 +197,9 @@ class MapWallpaperGenerator(
             val el = elements.optJSONObject(i) ?: continue
             if (el.optString("type") != "way") continue
             val tags = el.optJSONObject("tags") ?: continue
-            val roadClass = classify(tags.optString("highway", "")) ?: continue
+            val roadClass = classify(
+                tags.optString("highway", ""), tags.optString("junction", ""),
+            ) ?: continue
             val geometry = el.optJSONArray("geometry") ?: continue
             if (geometry.length() < 2) continue
 
@@ -222,14 +244,14 @@ class MapWallpaperGenerator(
      */
     class Palette(val name: String, val background: Int, val roadColours: IntArray) {
         companion object {
-            // Inverted polarity: light slate-teal blocks with dark roads carved into
-            // them, ramping from subtle minor streets to near-black major arterials.
-            // This is the standard CityWall scheme.
+            // Inverted polarity: light slate-teal blocks with near-black ink roads
+            // carved into them. The ramp is deliberately flat — hierarchy comes from
+            // stroke width, not colour. This is the standard CityWall scheme.
             val CITYWALL = Palette(
                 "CityWall", 0xFF252E37.toInt(),
                 intArrayOf(
-                    0xFF0D141D.toInt(), 0xFF0A111A.toInt(), 0xFF070E16.toInt(),
-                    0xFF050A12.toInt(), 0xFF03080F.toInt(), 0xFF00040B.toInt(),
+                    0xFF070E16.toInt(), 0xFF090F17.toInt(), 0xFF050B12.toInt(),
+                    0xFF03080F.toInt(), 0xFF02070E.toInt(), 0xFF01060D.toInt(),
                 ),
             )
             val MIDNIGHT_SLATE = Palette(
