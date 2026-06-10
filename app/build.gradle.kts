@@ -17,8 +17,8 @@ android {
         targetSdk = 35
         // Our CI sets these from the run number / tag. F-Droid's build server sets no
         // env, so the fallbacks must be the real current version (bump per release).
-        versionCode = (System.getenv("CITYWALL_VERSION_CODE") ?: "30500").toIntOrNull() ?: 30500
-        versionName = System.getenv("CITYWALL_VERSION_NAME") ?: "0.3.5"
+        versionCode = (System.getenv("CITYWALL_VERSION_CODE") ?: "40000").toIntOrNull() ?: 40000
+        versionName = System.getenv("CITYWALL_VERSION_NAME") ?: "0.4.0"
     }
 
     // "standard" is the GitHub/self-hosted APK with the in-app updater. "fdroid" is
