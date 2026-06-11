@@ -37,7 +37,8 @@ class MapWallpaperGenerator(
     private companion object {
         // Bump whenever the rendered look changes (widths, colours, classification)
         // so previously cached bitmaps regenerate. v2: Pathfinder restyle (#4).
-        const val STYLE_VERSION = 2
+        // v3: single ink tone for CityWall roads.
+        const val STYLE_VERSION = 3
     }
 
     // Cache entries are namespaced by palette + zoom + style version, so a palette
@@ -244,14 +245,15 @@ class MapWallpaperGenerator(
      */
     class Palette(val name: String, val background: Int, val roadColours: IntArray) {
         companion object {
-            // Inverted polarity: light slate-teal blocks with near-black ink roads
-            // carved into them. The ramp is deliberately flat — hierarchy comes from
-            // stroke width, not colour. This is the standard CityWall scheme.
+            // Inverted polarity: light slate-teal blocks with a single near-black
+            // ink tone for every road — hierarchy comes entirely from stroke width,
+            // so thin and thick roads never read as different colours. This is the
+            // standard CityWall scheme.
             val CITYWALL = Palette(
                 "CityWall", 0xFF252E37.toInt(),
                 intArrayOf(
-                    0xFF070E16.toInt(), 0xFF090F17.toInt(), 0xFF050B12.toInt(),
-                    0xFF03080F.toInt(), 0xFF02070E.toInt(), 0xFF01060D.toInt(),
+                    0xFF01060D.toInt(), 0xFF01060D.toInt(), 0xFF01060D.toInt(),
+                    0xFF01060D.toInt(), 0xFF01060D.toInt(), 0xFF01060D.toInt(),
                 ),
             )
             val MIDNIGHT_SLATE = Palette(
